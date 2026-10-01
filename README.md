@@ -84,8 +84,8 @@
 
 ## 数据资源示例
 
-![数据资源](./img/vibe-music-data.png)
-![数据资源示例](./img/vibe-music-data-songs.png)
+![数据资源](./img/jojo-music-data.png)
+![数据资源示例](./img/jojo-music-data-songs.png)
 
 ## 依赖服务说明
 
