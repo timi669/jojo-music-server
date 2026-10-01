@@ -8,11 +8,11 @@
         <version>3.3.7</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>cn.edu.seig</groupId>
-    <artifactId>vibe-music-server</artifactId>
+    <groupId>com.timi669</groupId>
+    <artifactId>jojo-music-server</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>vibe-music-server</name>
-    <description>vibe-music-server</description>
+    <name>jojo-music-server</name>
+    <description>JOJO MUSIC Server</description>
     <url/>
     <licenses>
         <license/>
