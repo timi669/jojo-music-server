@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.mapper;
+﻿package cn.edu.seig.vibemusic.mapper;
 
 import cn.edu.seig.vibemusic.model.entity.Song;
 import cn.edu.seig.vibemusic.model.vo.SongAdminVO;
@@ -18,7 +18,7 @@ import java.util.List;
  * Mapper 接口
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Mapper
@@ -38,11 +38,16 @@ public interface SongMapper extends BaseMapper<Song> {
                 FROM tb_song s
                 LEFT JOIN tb_artist a ON s.artist_id = a.id
                 WHERE 
-                    (#{songName} IS NULL OR s.name LIKE CONCAT('%', #{songName}, '%'))
+                    (#{keyword} IS NULL OR TRIM(#{keyword}) = ''
+                        OR s.name LIKE CONCAT('%', #{keyword}, '%')
+                        OR a.name LIKE CONCAT('%', #{keyword}, '%')
+                        OR s.album LIKE CONCAT('%', #{keyword}, '%'))
+                    AND (#{songName} IS NULL OR TRIM(#{songName}) = '' OR s.name LIKE CONCAT('%', #{songName}, '%'))
                     AND (#{artistName} IS NULL OR a.name LIKE CONCAT('%', #{artistName}, '%'))
-                    AND (#{album} IS NULL OR s.album LIKE CONCAT('%', #{album}, '%'))
+                    AND (#{album} IS NULL OR TRIM(#{album}) = '' OR s.album LIKE CONCAT('%', #{album}, '%'))
             """)
     IPage<SongVO> getSongsWithArtist(Page<SongVO> page,
+                                     @Param("keyword") String keyword,
                                      @Param("songName") String songName,
                                      @Param("artistName") String artistName,
                                      @Param("album") String album);

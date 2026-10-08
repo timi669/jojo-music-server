@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.service;
+﻿package cn.edu.seig.vibemusic.service;
 
 import cn.edu.seig.vibemusic.model.dto.PlaylistDTO;
 import cn.edu.seig.vibemusic.model.dto.SongDTO;
@@ -14,7 +14,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
  *  服务类
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 public interface IUserFavoriteService extends IService<UserFavorite> {

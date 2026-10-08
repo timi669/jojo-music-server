@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.service.impl;
+﻿package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
 import cn.edu.seig.vibemusic.constant.MessageConstant;
@@ -43,7 +43,7 @@ import java.util.stream.Collectors;
  * 服务实现类
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Service

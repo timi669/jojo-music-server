@@ -25,6 +25,11 @@ public class SongDTO implements Serializable {
     private Integer pageSize;
 
     /**
+     * 全局关键词，匹配歌曲名、歌手名或专辑名
+     */
+    private String keyword;
+
+    /**
      * 歌曲名
      */
     private String songName;

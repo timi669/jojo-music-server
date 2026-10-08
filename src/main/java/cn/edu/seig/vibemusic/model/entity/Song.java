@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.model.entity;
+﻿package cn.edu.seig.vibemusic.model.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -18,7 +18,7 @@ import java.time.LocalDate;
  * 
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Data

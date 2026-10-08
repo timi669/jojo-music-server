@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.model.entity;
+﻿package cn.edu.seig.vibemusic.model.entity;
 
 import cn.edu.seig.vibemusic.constant.MessageConstant;
 import cn.edu.seig.vibemusic.enumeration.UserStatusEnum;
@@ -24,7 +24,7 @@ import lombok.experimental.Accessors;
  *
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Data

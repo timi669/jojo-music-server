@@ -6,10 +6,24 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-$songCoverDirectory = Join-Path $DataRoot 'songCovers'
 $artistDirectory = Join-Path $DataRoot 'artists'
 $playlistDirectory = Join-Path $DataRoot 'playlists'
 $bannerDirectory = Join-Path $DataRoot 'banners'
+$extractedCoverDirectory = Join-Path $PSScriptRoot '..\target\personal-song-covers'
+$coverMappingPath = Join-Path $PSScriptRoot '..\target\personal-song-covers.json'
+$coverExtractorPath = Join-Path $PSScriptRoot 'media-tools\extract-embedded-covers.mjs'
+if (-not (Test-Path -LiteralPath $coverExtractorPath -PathType Leaf)) {
+    throw "Embedded cover extractor not found: $coverExtractorPath"
+}
+& node $coverExtractorPath $ManifestPath $DataRoot $extractedCoverDirectory $coverMappingPath | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw 'Failed to extract embedded song covers.'
+}
+$coverExtraction = Get-Content -LiteralPath $coverMappingPath -Raw | ConvertFrom-Json
+$embeddedCoversBySong = @{}
+foreach ($cover in $coverExtraction.covers) {
+    $embeddedCoversBySong[$cover.sourceFile] = $cover
+}
 
 function Get-ImageContentType([string]$Path) {
     $stream = [System.IO.File]::OpenRead($Path)
@@ -25,6 +39,11 @@ function Get-ImageContentType([string]$Path) {
     throw "Unsupported image format: $Path"
 }
 
+function Get-NormalizedArtistName([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+    return [regex]::Replace($Value.Normalize([System.Text.NormalizationForm]::FormKC).ToLowerInvariant(), '[^\p{L}\p{N}]', '')
+}
+
 function Get-MediaItems([string]$Directory, [string]$Prefix) {
     Get-ChildItem -LiteralPath $Directory -File | Sort-Object Name | ForEach-Object {
         [pscustomobject]@{
@@ -36,18 +55,48 @@ function Get-MediaItems([string]$Directory, [string]$Prefix) {
     }
 }
 
-$coverFiles = @(Get-ChildItem -LiteralPath $songCoverDirectory -File | Sort-Object Name)
 $artistFiles = @(Get-ChildItem -LiteralPath $artistDirectory -File | Sort-Object Name)
 $playlistFiles = @(Get-ChildItem -LiteralPath $playlistDirectory -File | Sort-Object Name)
 $bannerFiles = @(Get-ChildItem -LiteralPath $bannerDirectory -File | Sort-Object Name)
+$artistFilesByName = @{}
+foreach ($artistFile in $artistFiles) {
+    $normalizedName = Get-NormalizedArtistName ([System.IO.Path]::GetFileNameWithoutExtension($artistFile.Name))
+    if (-not $normalizedName) { continue }
+    if (-not $artistFilesByName.ContainsKey($normalizedName)) {
+        $artistFilesByName[$normalizedName] = [System.Collections.Generic.List[object]]::new()
+    }
+    $artistFilesByName[$normalizedName].Add($artistFile)
+}
+$legacyAvatarFilesByArtist = @{}
+$artistSqlPath = Join-Path $PSScriptRoot '..\sql\vibe_music.sql'
+if (Test-Path -LiteralPath $artistSqlPath) {
+    $artistInsertPattern = [regex]::new(
+        '^INSERT INTO `tb_artist` VALUES \(\d+,\s*''((?:\\.|[^''])*)'',\s*(?:NULL|\d+),\s*''((?:\\.|[^''])*)''',
+        [System.Text.RegularExpressions.RegexOptions]::Multiline
+    )
+    $escapedBackslash = [string][char]92 + [string][char]92
+    $escapedQuote = [string][char]92 + [string][char]39
+    foreach ($line in Get-Content -LiteralPath $artistSqlPath) {
+        $match = $artistInsertPattern.Match($line)
+        if (-not $match.Success) { continue }
+        $artistName = $match.Groups[1].Value.Replace($escapedQuote, [string][char]39).Replace($escapedBackslash, [string][char]92)
+        $avatarFileName = [System.IO.Path]::GetFileName($match.Groups[2].Value)
+        $normalizedName = Get-NormalizedArtistName $artistName
+        if (-not $normalizedName -or -not (Test-Path -LiteralPath (Join-Path $artistDirectory $avatarFileName) -PathType Leaf)) { continue }
+        if (-not $legacyAvatarFilesByArtist.ContainsKey($normalizedName)) {
+            $legacyAvatarFilesByArtist[$normalizedName] = [System.Collections.Generic.List[string]]::new()
+        }
+        $legacyAvatarFilesByArtist[$normalizedName].Add($avatarFileName)
+    }
+}
 $artistCounts = [ordered]@{}
 $songs = [System.Collections.Generic.List[object]]::new()
-$songIndex = 0
 
 foreach ($sourceSong in $manifest.Songs) {
     $artist = if ($sourceSong.Artist) { $sourceSong.Artist.Trim() } else { '未知歌手' }
     $title = if ($sourceSong.Title) { $sourceSong.Title.Trim() } else { [System.IO.Path]::GetFileNameWithoutExtension($sourceSong.File) }
     $album = if ($sourceSong.Album) { $sourceSong.Album.Trim() } else { "$artist 单曲" }
+    $embeddedCover = $embeddedCoversBySong[$sourceSong.File]
     $song = [pscustomobject]@{
         file = Join-Path (Join-Path $DataRoot 'songs') $sourceSong.File
         artist = $artist
@@ -56,23 +105,35 @@ foreach ($sourceSong in $manifest.Songs) {
         genre = $sourceSong.Genre
         durationSeconds = if ($sourceSong.DurationSeconds) { $sourceSong.DurationSeconds } else { 0 }
         releaseDate = if ($sourceSong.Year -and $sourceSong.Year -ge 1000 -and $sourceSong.Year -le 9999) { '{0:D4}-01-01' -f $sourceSong.Year } else { $sourceSong.LastWriteDate }
-        coverKey = if ($coverFiles.Count) { "songCovers/$($coverFiles[$songIndex % $coverFiles.Count].Name)" } else { '' }
+        coverKey = if ($embeddedCover) { $embeddedCover.key } else { '' }
     }
     $songs.Add($song)
     if (-not $artistCounts.Contains($artist)) { $artistCounts[$artist] = 0 }
     $artistCounts[$artist]++
-    $songIndex++
 }
 
 $artistNames = @($artistCounts.Keys)
 $artists = [System.Collections.Generic.List[object]]::new()
-$artistIndex = 0
 foreach ($artistName in $artistNames) {
+    $normalizedName = Get-NormalizedArtistName $artistName
+    $legacyFiles = @()
+    if ($legacyAvatarFilesByArtist.ContainsKey($normalizedName)) {
+        $legacyFiles = $legacyAvatarFilesByArtist[$normalizedName].ToArray()
+    }
+    $matchingFiles = @()
+    if ($artistFilesByName.ContainsKey($normalizedName)) {
+        $matchingFiles = $artistFilesByName[$normalizedName].ToArray()
+    }
+    $avatarKey = ''
+    if ($legacyFiles.Count -eq 1) {
+        $avatarKey = "artists/$($legacyFiles[0])"
+    } elseif ($legacyFiles.Count -eq 0 -and $matchingFiles.Count -eq 1) {
+        $avatarKey = "artists/$($matchingFiles[0].Name)"
+    }
     $artists.Add([pscustomobject]@{
         name = $artistName
-        avatarKey = if ($artistFiles.Count) { "artists/$($artistFiles[$artistIndex % $artistFiles.Count].Name)" } else { '' }
+        avatarKey = $avatarKey
     })
-    $artistIndex++
 }
 
 $rankedArtists = @($artists | Sort-Object @{ Expression = { $artistCounts[$_.name] }; Descending = $true })
@@ -105,7 +166,14 @@ foreach ($song in $songs) {
         }
     })
 }
-$mediaItems.AddRange([object[]]@(Get-MediaItems $songCoverDirectory 'songCovers'))
+foreach ($cover in $coverExtraction.covers) {
+    $mediaItems.Add([pscustomobject]@{
+        file = $cover.file
+        key = $cover.key
+        size = $cover.size
+        contentType = $cover.contentType
+    })
+}
 $mediaItems.AddRange([object[]]@(Get-MediaItems $artistDirectory 'artists'))
 $mediaItems.AddRange([object[]]@(Get-MediaItems $playlistDirectory 'playlists'))
 $mediaItems.AddRange([object[]]@(Get-MediaItems $bannerDirectory 'banners'))
@@ -133,6 +201,8 @@ $totalBytes = ($mediaItems | Measure-Object -Property size -Sum).Sum
     Banners = $bannerFiles.Count
     MediaObjects = $mediaItems.Count
     TotalGB = [math]::Round($totalBytes / 1GB, 2)
+    EmbeddedCovers = $coverExtraction.extractedCovers
+    SongsWithoutEmbeddedCover = $coverExtraction.missingCovers
     MissingArtistTags = @($manifest.Songs | Where-Object { -not $_.Artist }).Count
     MissingTitleTags = @($manifest.Songs | Where-Object { -not $_.Title }).Count
 }

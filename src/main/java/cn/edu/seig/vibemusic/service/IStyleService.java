@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.service;
+﻿package cn.edu.seig.vibemusic.service;
 
 import cn.edu.seig.vibemusic.model.entity.Style;
 import com.baomidou.mybatisplus.extension.service.IService;
@@ -8,7 +8,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
  *  服务类
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 public interface IStyleService extends IService<Style> {

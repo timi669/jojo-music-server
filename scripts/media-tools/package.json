@@ -1,0 +1,8 @@
+{
+  "name": "jojo-music-media-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "music-metadata": "^12.0.0"
+  }
+}

@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.controller;
+﻿package cn.edu.seig.vibemusic.controller;
 
 
 import cn.edu.seig.vibemusic.model.dto.*;
@@ -25,7 +25,7 @@ import java.util.List;
  * 前端控制器
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @RestController

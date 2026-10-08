@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.model.entity;
+﻿package cn.edu.seig.vibemusic.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -19,7 +19,7 @@ import lombok.experimental.Accessors;
  * 
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Data

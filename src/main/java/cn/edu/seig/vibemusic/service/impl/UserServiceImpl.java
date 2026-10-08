@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.service.impl;
+﻿package cn.edu.seig.vibemusic.service.impl;
 
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
@@ -42,7 +42,7 @@ import java.util.concurrent.TimeUnit;
  * 服务实现类
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Service

@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.mapper;
+﻿package cn.edu.seig.vibemusic.mapper;
 
 import cn.edu.seig.vibemusic.model.entity.Playlist;
 import cn.edu.seig.vibemusic.model.vo.PlaylistDetailVO;
@@ -17,7 +17,7 @@ import java.util.List;
  * Mapper 接口
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Mapper

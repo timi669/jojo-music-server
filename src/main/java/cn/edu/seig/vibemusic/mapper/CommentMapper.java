@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.mapper;
+﻿package cn.edu.seig.vibemusic.mapper;
 
 import cn.edu.seig.vibemusic.model.entity.Comment;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
@@ -9,7 +9,7 @@ import org.apache.ibatis.annotations.Mapper;
  *  Mapper 接口
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Mapper

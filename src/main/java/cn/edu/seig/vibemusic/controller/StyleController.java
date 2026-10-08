@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.controller;
+﻿package cn.edu.seig.vibemusic.controller;
 
 
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
  *  前端控制器
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @RestController

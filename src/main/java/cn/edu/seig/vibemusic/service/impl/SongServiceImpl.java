@@ -1,4 +1,4 @@
-package cn.edu.seig.vibemusic.service.impl;
+﻿package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
 import cn.edu.seig.vibemusic.constant.MessageConstant;
@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
  * 服务实现类
  * </p>
  *
- * @author sunpingli
+ * @author timi669
  * @since 2025-01-09
  */
 @Service
@@ -75,7 +75,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 歌曲列表
      */
     @Override
-    @Cacheable(key = "#songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.songName + '-' + #songDTO.artistName + '-' + #songDTO.album")
+    @Cacheable(key = "#songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.keyword + '-' + #songDTO.songName + '-' + #songDTO.artistName + '-' + #songDTO.album")
     public Result<PageResult<SongVO>> getAllSongs(SongDTO songDTO, HttpServletRequest request) {
         // 获取请求头中的 token
         String token = request.getHeader("Authorization");
@@ -90,7 +90,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
 
         // 查询歌曲列表
         Page<SongVO> page = new Page<>(songDTO.getPageNum(), songDTO.getPageSize());
-        IPage<SongVO> songPage = songMapper.getSongsWithArtist(page, songDTO.getSongName(), songDTO.getArtistName(), songDTO.getAlbum());
+        IPage<SongVO> songPage = songMapper.getSongsWithArtist(page, songDTO.getKeyword(), songDTO.getSongName(), songDTO.getArtistName(), songDTO.getAlbum());
         if (songPage.getRecords().isEmpty()) {
             return Result.success(MessageConstant.DATA_NOT_FOUND, new PageResult<>(0L, null));
         }
