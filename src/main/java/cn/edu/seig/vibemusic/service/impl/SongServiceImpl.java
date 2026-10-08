@@ -1,10 +1,11 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
 import cn.edu.seig.vibemusic.constant.MessageConstant;
 import cn.edu.seig.vibemusic.enumeration.LikeStatusEnum;
 import cn.edu.seig.vibemusic.enumeration.RoleEnum;
 import cn.edu.seig.vibemusic.mapper.GenreMapper;
+import cn.edu.seig.vibemusic.mapper.SongArtistMapper;
 import cn.edu.seig.vibemusic.mapper.SongMapper;
 import cn.edu.seig.vibemusic.mapper.StyleMapper;
 import cn.edu.seig.vibemusic.mapper.UserFavoriteMapper;
@@ -24,6 +25,7 @@ import cn.edu.seig.vibemusic.result.Result;
 import cn.edu.seig.vibemusic.service.ISongService;
 import cn.edu.seig.vibemusic.service.MinioService;
 import cn.edu.seig.vibemusic.util.JwtUtil;
+import cn.edu.seig.vibemusic.util.SongArtistDisplayResolver;
 import cn.edu.seig.vibemusic.util.TypeConversionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -58,6 +60,8 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
     @Autowired
     private SongMapper songMapper;
     @Autowired
+    private SongArtistMapper songArtistMapper;
+    @Autowired
     private UserFavoriteMapper userFavoriteMapper;
     @Autowired
     private StyleMapper styleMapper;
@@ -75,7 +79,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 歌曲列表
      */
     @Override
-    @Cacheable(key = "#songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.keyword + '-' + #songDTO.songName + '-' + #songDTO.artistName + '-' + #songDTO.album")
+    @Cacheable(key = "'song-credit-v3-' + #songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.keyword + '-' + #songDTO.songName + '-' + #songDTO.artistName + '-' + #songDTO.album")
     public Result<PageResult<SongVO>> getAllSongs(SongDTO songDTO, HttpServletRequest request) {
         // 获取请求头中的 token
         String token = request.getHeader("Authorization");
@@ -100,6 +104,15 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
                 .peek(songVO -> songVO.setLikeStatus(LikeStatusEnum.DEFAULT.getId()))
                 .toList();
 
+        for (SongVO songVO : songVOList) {
+            try {
+                List<String> creditArtistNames = songArtistMapper.selectArtistNamesBySongId(songVO.getSongId());
+                songVO.setArtistName(SongArtistDisplayResolver.resolveDisplayName(songVO.getArtistName(), creditArtistNames));
+            } catch (Exception ignored) {
+                // 兼容旧表结构：tb_song_artist 尚未创建时，保留原有主歌手名称
+            }
+        }
+
         // 如果 token 解析成功且用户为登录状态，进一步操作
         if (map != null) {
             String role = (String) map.get(JwtClaimsConstant.ROLE);
@@ -122,6 +135,13 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
                     if (favoriteSongIds.contains(songVO.getSongId())) {
                         songVO.setLikeStatus(LikeStatusEnum.LIKE.getId());
                     }
+
+                    try {
+                        List<String> creditArtistNames = songArtistMapper.selectArtistNamesBySongId(songVO.getSongId());
+                        songVO.setArtistName(SongArtistDisplayResolver.resolveDisplayName(songVO.getArtistName(), creditArtistNames));
+                    } catch (Exception ignored) {
+                        // 兼容旧表结构：tb_song_artist 尚未创建时，保留原有主歌手名称
+                    }
                 }
             }
         }
@@ -136,7 +156,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 歌曲列表
      */
     @Override
-    @Cacheable(key = "#songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.songName + '-' + #songDTO.album + '-' + #songDTO.artistId")
+    @Cacheable(key = "'song-artist-v3-' + #songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.songName + '-' + #songDTO.album + '-' + #songDTO.artistId")
     public Result<PageResult<SongAdminVO>> getAllSongsByArtist(SongAndArtistDTO songDTO) {
         // 分页查询
         Page<SongAdminVO> page = new Page<>(songDTO.getPageNum(), songDTO.getPageSize());
@@ -144,6 +164,15 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
 
         if (songPage.getRecords().isEmpty()) {
             return Result.success(MessageConstant.DATA_NOT_FOUND, new PageResult<>(0L, null));
+        }
+
+        for (SongAdminVO songAdminVO : songPage.getRecords()) {
+            try {
+                List<String> creditArtistNames = songArtistMapper.selectArtistNamesBySongId(songAdminVO.getSongId());
+                songAdminVO.setArtistName(SongArtistDisplayResolver.resolveDisplayName(songAdminVO.getArtistName(), creditArtistNames));
+            } catch (Exception ignored) {
+                // 兼容旧表结构：tb_song_artist 尚未创建时，保留原有主歌手名称
+            }
         }
 
         return Result.success(new PageResult<>(songPage.getTotal(), songPage.getRecords()));
@@ -233,7 +262,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 歌曲详情
      */
     @Override
-    @Cacheable(key = "#songId")
+    @Cacheable(key = "'song-detail-v3-' + #songId")
     public Result<SongDetailVO> getSongDetail(Long songId, HttpServletRequest request) {
         SongDetailVO songDetailVO = songMapper.getSongDetailById(songId);
 
@@ -264,6 +293,13 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
                     songDetailVO.setLikeStatus(LikeStatusEnum.LIKE.getId());
                 }
             }
+        }
+
+        try {
+            List<String> creditArtistNames = songArtistMapper.selectArtistNamesBySongId(songId);
+            songDetailVO.setArtistName(SongArtistDisplayResolver.resolveDisplayName(songDetailVO.getArtistName(), creditArtistNames));
+        } catch (Exception ignored) {
+            // 兼容旧表结构：tb_song_artist 尚未创建时，保留原有主歌手名称
         }
 
         return Result.success(songDetailVO);

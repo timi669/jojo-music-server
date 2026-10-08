@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service;
+package cn.edu.seig.vibemusic.service;
 
 /**
  * <p>

@@ -49,7 +49,7 @@
 
     <!-- 根据歌曲id列表查询歌曲列表 -->
     <select id="getSongsByIds" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">
-        SELECT
+        SELECT DISTINCT
         s.id AS songId,
         s.name AS songName,
         s.album,
@@ -72,7 +72,16 @@
             AND s.name LIKE CONCAT('%', #{songName}, '%')
         </if>
         <if test="artistName != null and artistName.trim() != ''">
-            AND a.name LIKE CONCAT('%', #{artistName}, '%')
+            AND (
+                a.name LIKE CONCAT('%', #{artistName}, '%')
+                OR EXISTS (
+                    SELECT 1
+                    FROM tb_song_artist sa
+                    LEFT JOIN tb_artist sa_artist ON sa.artist_id = sa_artist.id
+                    WHERE sa.song_id = s.id
+                      AND sa_artist.name LIKE CONCAT('%', #{artistName}, '%')
+                )
+            )
         </if>
         <if test="album != null and album.trim() != ''">
             AND s.album LIKE CONCAT('%', #{album}, '%')

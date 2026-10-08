@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.model.entity;
+package cn.edu.seig.vibemusic.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;

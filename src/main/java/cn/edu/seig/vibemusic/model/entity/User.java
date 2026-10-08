@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.model.entity;
+package cn.edu.seig.vibemusic.model.entity;
 
 import cn.edu.seig.vibemusic.constant.MessageConstant;
 import cn.edu.seig.vibemusic.enumeration.UserStatusEnum;

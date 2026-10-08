@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
 import cn.edu.seig.vibemusic.constant.MessageConstant;
@@ -202,7 +202,7 @@ public class PlaylistServiceImpl extends ServiceImpl<PlaylistMapper, Playlist> i
      * @return 歌单详情
      */
     @Override
-    @Cacheable(key = "#playlistId")
+    @Cacheable(key = "'playlist-detail-v2-' + #playlistId")
     public Result<PlaylistDetailVO> getPlaylistDetail(Long playlistId, HttpServletRequest request) {
         PlaylistDetailVO playlistDetailVO = playlistMapper.getPlaylistDetailById(playlistId);
 

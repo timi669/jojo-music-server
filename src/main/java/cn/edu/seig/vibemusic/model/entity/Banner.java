@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.model.entity;
+package cn.edu.seig.vibemusic.model.entity;
 
 import cn.edu.seig.vibemusic.enumeration.BannerStatusEnum;
 import com.baomidou.mybatisplus.annotation.IdType;

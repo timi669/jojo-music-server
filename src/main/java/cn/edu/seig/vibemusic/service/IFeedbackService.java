@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service;
+package cn.edu.seig.vibemusic.service;
 
 import cn.edu.seig.vibemusic.model.dto.FeedbackDTO;
 import cn.edu.seig.vibemusic.model.entity.Feedback;

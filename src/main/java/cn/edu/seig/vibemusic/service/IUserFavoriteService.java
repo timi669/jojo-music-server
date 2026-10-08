@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service;
+package cn.edu.seig.vibemusic.service;
 
 import cn.edu.seig.vibemusic.model.dto.PlaylistDTO;
 import cn.edu.seig.vibemusic.model.dto.SongDTO;

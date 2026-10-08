@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
 import cn.edu.seig.vibemusic.constant.MessageConstant;
@@ -50,12 +50,45 @@ import java.util.stream.Collectors;
 @CacheConfig(cacheNames = "artistCache")
 public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> implements IArtistService {
 
+    private static final int UNCLASSIFIED_GENDER = -2;
+    private static final String OTHER_AREA = "__OTHER__";
+    private static final String UNKNOWN_AREA = "__UNKNOWN__";
+    private static final List<String> CLASSIFIED_AREAS = List.of(
+            "China", "United States", "Canada", "Taiwan", "South Korea", "Japan", "Brazil");
+
     @Autowired
     private ArtistMapper artistMapper;
     @Autowired
     private UserFavoriteMapper userFavoriteMapper;
     @Autowired
     private MinioService minioService;
+
+    private void applyArtistFilters(QueryWrapper<Artist> queryWrapper, ArtistDTO artistDTO) {
+        if (artistDTO.getArtistName() != null && !artistDTO.getArtistName().isBlank()) {
+            queryWrapper.like("name", artistDTO.getArtistName());
+        }
+        applyArtistDemographicFilters(queryWrapper, artistDTO.getGender(), artistDTO.getArea());
+    }
+
+    private void applyArtistDemographicFilters(QueryWrapper<Artist> queryWrapper, Integer gender, String area) {
+        if (gender != null) {
+            if (gender == UNCLASSIFIED_GENDER) {
+                queryWrapper.isNull("gender");
+            } else {
+                queryWrapper.eq("gender", gender);
+            }
+        }
+        if (area == null || area.isBlank()) {
+            return;
+        }
+        if (OTHER_AREA.equals(area)) {
+            queryWrapper.notIn("area", CLASSIFIED_AREAS).isNotNull("area").ne("area", "");
+        } else if (UNKNOWN_AREA.equals(area)) {
+            queryWrapper.and(wrapper -> wrapper.isNull("area").or().eq("area", ""));
+        } else {
+            queryWrapper.eq("area", area);
+        }
+    }
 
     /**
      * 获取所有歌手列表
@@ -64,21 +97,12 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手列表
      */
     @Override
-    @Cacheable(key = "#artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
+    @Cacheable(key = "'artist-classification-v3-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
     public Result<PageResult<ArtistVO>> getAllArtists(ArtistDTO artistDTO) {
         // 分页查询
         Page<Artist> page = new Page<>(artistDTO.getPageNum(), artistDTO.getPageSize());
         QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
-        // 根据 artistDTO 的条件构建查询条件
-        if (artistDTO.getArtistName() != null) {
-            queryWrapper.like("name", artistDTO.getArtistName());
-        }
-        if (artistDTO.getGender() != null) {
-            queryWrapper.eq("gender", artistDTO.getGender());
-        }
-        if (artistDTO.getArea() != null) {
-            queryWrapper.like("area", artistDTO.getArea());
-        }
+        applyArtistFilters(queryWrapper, artistDTO);
 
         IPage<Artist> artistPage = artistMapper.selectPage(page, queryWrapper);
         if (artistPage.getRecords().size() == 0) {
@@ -103,21 +127,12 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手列表
      */
     @Override
-    @Cacheable(key = "#artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area + '-admin'")
+    @Cacheable(key = "'artist-admin-v3-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
     public Result<PageResult<Artist>> getAllArtistsAndDetail(ArtistDTO artistDTO) {
         // 分页查询
         Page<Artist> page = new Page<>(artistDTO.getPageNum(), artistDTO.getPageSize());
         QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
-        // 根据 artistDTO 的条件构建查询条件
-        if (artistDTO.getArtistName() != null) {
-            queryWrapper.like("name", artistDTO.getArtistName());
-        }
-        if (artistDTO.getGender() != null) {
-            queryWrapper.eq("gender", artistDTO.getGender());
-        }
-        if (artistDTO.getArea() != null) {
-            queryWrapper.like("area", artistDTO.getArea());
-        }
+        applyArtistFilters(queryWrapper, artistDTO);
 
         // 倒序排序
         queryWrapper.orderByDesc("id");
@@ -136,7 +151,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手名称列表
      */
     @Override
-    @Cacheable(key = "'allArtistNames'")
+    @Cacheable(key = "'artist-names-v3'")
     public Result<List<ArtistNameVO>> getAllArtistNames() {
         List<Artist> artists = artistMapper.selectList(new QueryWrapper<Artist>().orderByDesc("id"));
         if (artists.isEmpty()) {
@@ -188,7 +203,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手详情
      */
     @Override
-    @Cacheable(key = "#artistId")
+    @Cacheable(key = "'artist-detail-v3-' + #artistId")
     public Result<ArtistDetailVO> getArtistDetail(Long artistId, HttpServletRequest request) {
         ArtistDetailVO artistDetailVO = artistMapper.getArtistDetailById(artistId);
 
@@ -249,12 +264,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
     @Override
     public Result<Long> getAllArtistsCount(Integer gender, String area) {
         QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
-        if (gender != null) {
-            queryWrapper.eq("gender", gender);
-        }
-        if (area != null) {
-            queryWrapper.eq("area", area);
-        }
+        applyArtistDemographicFilters(queryWrapper, gender, area);
 
         return Result.success(artistMapper.selectCount(queryWrapper));
     }

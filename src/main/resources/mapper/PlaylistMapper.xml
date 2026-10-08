@@ -41,7 +41,12 @@
                s.cover_url    AS songCoverUrl,
                s.audio_url    AS audioUrl,
                s.release_time AS releaseTime,
-               a.name         AS artistName,
+               COALESCE((
+                   SELECT GROUP_CONCAT(credit_artist.name ORDER BY sa.credit_order SEPARATOR ' / ')
+                   FROM tb_song_artist sa
+                            JOIN tb_artist credit_artist ON credit_artist.id = sa.artist_id
+                   WHERE sa.song_id = s.id
+               ), a.name)    AS artistName,
                c.id           AS commentId,
                c.content      AS content,
                c.create_time  AS createTime,

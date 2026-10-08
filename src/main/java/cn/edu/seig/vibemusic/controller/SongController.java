@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.controller;
+package cn.edu.seig.vibemusic.controller;
 
 
 import cn.edu.seig.vibemusic.model.dto.SongDTO;

@@ -16,7 +16,7 @@ if ($DatabaseName -notmatch '^[A-Za-z0-9_]+$' -or $DatabaseName -eq 'vibe_music'
     throw 'The personal database name is invalid or points at the existing sample database.'
 }
 
-$plan = Get-Content -LiteralPath $PlanPath -Raw | ConvertFrom-Json
+$plan = [System.IO.File]::ReadAllText($PlanPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 $config = Get-Content -LiteralPath $ConfigPath -Raw
 if ($plan.songs.Count -eq 0 -or $plan.mediaItems.Count -eq 0) {
     throw 'The personal library plan is empty.'

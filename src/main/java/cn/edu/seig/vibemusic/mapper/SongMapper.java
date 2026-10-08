@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.mapper;
+package cn.edu.seig.vibemusic.mapper;
 
 import cn.edu.seig.vibemusic.model.entity.Song;
 import cn.edu.seig.vibemusic.model.vo.SongAdminVO;
@@ -41,9 +41,26 @@ public interface SongMapper extends BaseMapper<Song> {
                     (#{keyword} IS NULL OR TRIM(#{keyword}) = ''
                         OR s.name LIKE CONCAT('%', #{keyword}, '%')
                         OR a.name LIKE CONCAT('%', #{keyword}, '%')
+                        OR EXISTS (
+                            SELECT 1
+                            FROM tb_song_artist sa
+                            LEFT JOIN tb_artist sa_artist ON sa.artist_id = sa_artist.id
+                            WHERE sa.song_id = s.id
+                              AND sa_artist.name LIKE CONCAT('%', #{keyword}, '%')
+                        )
                         OR s.album LIKE CONCAT('%', #{keyword}, '%'))
                     AND (#{songName} IS NULL OR TRIM(#{songName}) = '' OR s.name LIKE CONCAT('%', #{songName}, '%'))
-                    AND (#{artistName} IS NULL OR a.name LIKE CONCAT('%', #{artistName}, '%'))
+                    AND (
+                        #{artistName} IS NULL OR TRIM(#{artistName}) = ''
+                        OR a.name LIKE CONCAT('%', #{artistName}, '%')
+                        OR EXISTS (
+                            SELECT 1
+                            FROM tb_song_artist sa
+                            LEFT JOIN tb_artist sa_artist ON sa.artist_id = sa_artist.id
+                            WHERE sa.song_id = s.id
+                              AND sa_artist.name LIKE CONCAT('%', #{artistName}, '%')
+                        )
+                    )
                     AND (#{album} IS NULL OR TRIM(#{album}) = '' OR s.album LIKE CONCAT('%', #{album}, '%'))
             """)
     IPage<SongVO> getSongsWithArtist(Page<SongVO> page,
@@ -69,8 +86,15 @@ public interface SongMapper extends BaseMapper<Song> {
                 FROM tb_song s
                 LEFT JOIN tb_artist a ON s.artist_id = a.id
                 WHERE 
-                    (#{artistId} IS NULL OR s.artist_id = #{artistId})
-                    AND(#{songName} IS NULL OR s.name LIKE CONCAT('%', #{songName}, '%'))
+                    (#{artistId} IS NULL
+                        OR s.artist_id = #{artistId}
+                        OR EXISTS (
+                            SELECT 1
+                            FROM tb_song_artist sa
+                            WHERE sa.song_id = s.id
+                              AND sa.artist_id = #{artistId}
+                        ))
+                    AND (#{songName} IS NULL OR s.name LIKE CONCAT('%', #{songName}, '%'))
                     AND (#{album} IS NULL OR s.album LIKE CONCAT('%', #{album}, '%'))
                 ORDER BY s.release_time DESC
             """)

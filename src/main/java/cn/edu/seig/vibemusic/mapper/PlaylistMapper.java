@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.mapper;
+package cn.edu.seig.vibemusic.mapper;
 
 import cn.edu.seig.vibemusic.model.entity.Playlist;
 import cn.edu.seig.vibemusic.model.vo.PlaylistDetailVO;

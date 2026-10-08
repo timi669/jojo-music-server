@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.constant.MessageConstant;
 import cn.edu.seig.vibemusic.service.EmailService;

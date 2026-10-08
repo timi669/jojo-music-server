@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 
 import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;

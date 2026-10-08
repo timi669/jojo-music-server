@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.model.entity.PlaylistBinding;
 import cn.edu.seig.vibemusic.mapper.PlaylistBindingMapper;

@@ -5,7 +5,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+$manifest = [System.IO.File]::ReadAllText($ManifestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+$unknownArtistLabel = ([char]0x672A).ToString() + [char]0x77E5 + [char]0x6B4C + [char]0x624B
+$unknownAlbumLabel = ([char]0x672A).ToString() + [char]0x77E5 + [char]0x4E13 + [char]0x8F91
+$singleTrackLabel = ([char]0x5355).ToString() + [char]0x66F2
 $artistDirectory = Join-Path $DataRoot 'artists'
 $playlistDirectory = Join-Path $DataRoot 'playlists'
 $bannerDirectory = Join-Path $DataRoot 'banners'
@@ -93,9 +96,15 @@ $artistCounts = [ordered]@{}
 $songs = [System.Collections.Generic.List[object]]::new()
 
 foreach ($sourceSong in $manifest.Songs) {
-    $artist = if ($sourceSong.Artist) { $sourceSong.Artist.Trim() } else { '未知歌手' }
+    $artist = if ($sourceSong.Artist) { $sourceSong.Artist.Trim() } else { $unknownArtistLabel }
     $title = if ($sourceSong.Title) { $sourceSong.Title.Trim() } else { [System.IO.Path]::GetFileNameWithoutExtension($sourceSong.File) }
-    $album = if ($sourceSong.Album) { $sourceSong.Album.Trim() } else { "$artist 单曲" }
+    $album = if ($sourceSong.Album) {
+        $sourceSong.Album.Trim()
+    } elseif ($sourceSong.Artist) {
+        "$artist $singleTrackLabel"
+    } else {
+        $unknownAlbumLabel
+    }
     $embeddedCover = $embeddedCoversBySong[$sourceSong.File]
     $song = [pscustomobject]@{
         file = Join-Path (Join-Path $DataRoot 'songs') $sourceSong.File
@@ -190,7 +199,8 @@ $plan = [pscustomobject]@{
 
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputPath)
 New-Item -ItemType Directory -Path (Split-Path $resolvedOutput -Parent) -Force | Out-Null
-$plan | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resolvedOutput -Encoding UTF8
+$planJson = ConvertTo-Json -InputObject $plan -Depth 8
+[System.IO.File]::WriteAllText($resolvedOutput, $planJson, [System.Text.UTF8Encoding]::new($true))
 
 $totalBytes = ($mediaItems | Measure-Object -Property size -Sum).Sum
 [pscustomobject]@{

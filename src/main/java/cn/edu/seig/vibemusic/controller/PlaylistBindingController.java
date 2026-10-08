@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.controller;
+package cn.edu.seig.vibemusic.controller;
 
 
 import org.springframework.web.bind.annotation.RequestMapping;

@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.service.impl;
+package cn.edu.seig.vibemusic.service.impl;
 
 import cn.edu.seig.vibemusic.model.entity.Style;
 import cn.edu.seig.vibemusic.mapper.StyleMapper;

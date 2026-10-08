@@ -1,4 +1,4 @@
-﻿package cn.edu.seig.vibemusic.mapper;
+package cn.edu.seig.vibemusic.mapper;
 
 import cn.edu.seig.vibemusic.model.entity.PlaylistBinding;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
