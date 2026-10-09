@@ -328,7 +328,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 结果
      */
     @Override
-    @CacheEvict(cacheNames = "songCache", allEntries = true)
+    @CacheEvict(cacheNames = {"songCache", "artistCache"}, allEntries = true)
     public Result addSong(SongAddDTO songAddDTO) {
         Song song = new Song();
         BeanUtils.copyProperties(songAddDTO, song);
@@ -379,7 +379,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 结果
      */
     @Override
-    @CacheEvict(cacheNames = "songCache", allEntries = true)
+    @CacheEvict(cacheNames = {"songCache", "artistCache"}, allEntries = true)
     public Result updateSong(SongUpdateDTO songUpdateDTO) {
         // 查询数据库中是否存在该歌曲
         Song songInDB = songMapper.selectById(songUpdateDTO.getSongId());
@@ -427,7 +427,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 更新结果
      */
     @Override
-    @CacheEvict(cacheNames = "songCache", allEntries = true)
+    @CacheEvict(cacheNames = {"songCache", "artistCache"}, allEntries = true)
     public Result updateSongCover(Long songId, String coverUrl) {
         Song song = songMapper.selectById(songId);
         String cover = song.getCoverUrl();
@@ -451,7 +451,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 更新结果
      */
     @Override
-    @CacheEvict(cacheNames = "songCache", allEntries = true)
+    @CacheEvict(cacheNames = {"songCache", "artistCache"}, allEntries = true)
     public Result updateSongAudio(Long songId, String audioUrl, String duration) {
         Song song = songMapper.selectById(songId);
         String audio = song.getAudioUrl();
@@ -474,7 +474,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 删除结果
      */
     @Override
-    @CacheEvict(cacheNames = "songCache", allEntries = true)
+    @CacheEvict(cacheNames = {"songCache", "artistCache"}, allEntries = true)
     public Result deleteSong(Long songId) {
         Song song = songMapper.selectById(songId);
         if (song == null) {
@@ -504,7 +504,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 删除结果
      */
     @Override
-    @CacheEvict(cacheNames = "songCache", allEntries = true)
+    @CacheEvict(cacheNames = {"songCache", "artistCache"}, allEntries = true)
     public Result deleteSongs(List<Long> songIds) {
         // 1. 查询歌曲信息，获取歌曲封面 URL 列表
         List<Song> songs = songMapper.selectByIds(songIds);

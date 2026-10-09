@@ -203,12 +203,12 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手详情
      */
     @Override
-    @Cacheable(key = "'artist-detail-v3-' + #artistId")
+    @Cacheable(key = "'artist-detail-v5-' + #artistId")
     public Result<ArtistDetailVO> getArtistDetail(Long artistId, HttpServletRequest request) {
         ArtistDetailVO artistDetailVO = artistMapper.getArtistDetailById(artistId);
 
         // 设置默认状态
-        List<SongVO> songVOList = artistDetailVO.getSongs();
+        List<SongVO> songVOList = artistMapper.getSongsByArtistId(artistId);
         songVOList.forEach(songVO -> songVO.setLikeStatus(LikeStatusEnum.DEFAULT.getId()));
 
         // 获取请求头中的 token

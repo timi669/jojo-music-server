@@ -11,16 +11,6 @@
         <result column="birth" property="birth"/>
         <result column="area" property="area"/>
         <result column="introduction" property="introduction"/>
-        <collection property="songs" ofType="cn.edu.seig.vibemusic.model.vo.SongVO">
-            <id column="songId" property="songId"/>
-            <result column="songName" property="songName"/>
-            <result column="artistNameOfSong" property="artistName"/>
-            <result column="album" property="album"/>
-            <result column="duration" property="duration"/>
-            <result column="songCoverUrl" property="coverUrl"/>
-            <result column="audioUrl" property="audioUrl"/>
-            <result column="releaseTime" property="releaseTime"/>
-        </collection>
     </resultMap>
 
     <!-- 查询歌手详情 -->
@@ -31,29 +21,55 @@
                a.avatar       AS avatar,
                a.birth        AS birth,
                a.area         AS area,
-               a.introduction AS introduction,
-               COALESCE((
+               a.introduction AS introduction
+        FROM tb_artist a
+        WHERE a.id = #{artistId}
+    </select>
+
+    <!-- 查询该歌手参与的全部歌曲，包括主艺人和合作艺人 -->
+    <select id="getSongsByArtistId" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">
+        SELECT s.id           AS songId,
+               s.name         AS songName,
+               CONCAT_WS(' / ',
+                   primary_artist.name,
+                   (
                    SELECT GROUP_CONCAT(credit_artist.name ORDER BY sa.credit_order SEPARATOR ' / ')
                    FROM tb_song_artist sa
                             JOIN tb_artist credit_artist ON credit_artist.id = sa.artist_id
                    WHERE sa.song_id = s.id
-               ), a.name)    AS artistNameOfSong,
-               s.id           AS songId,
-               s.name         AS songName,
+                     AND sa.artist_id &lt;&gt; s.artist_id
+                   )
+               ) AS artistName,
                s.album        AS album,
                s.duration     AS duration,
-               s.cover_url    AS songCoverUrl,
+               s.cover_url    AS coverUrl,
                s.audio_url    AS audioUrl,
                s.release_time AS releaseTime
-        FROM tb_artist a
-                 LEFT JOIN tb_song s ON a.id = s.artist_id
+        FROM tb_song s
+                 LEFT JOIN tb_artist primary_artist ON primary_artist.id = s.artist_id
+        WHERE s.artist_id = #{artistId}
+           OR EXISTS (
+               SELECT 1
+               FROM tb_song_artist sa
+               WHERE sa.song_id = s.id
+                 AND sa.artist_id = #{artistId}
+           )
+           OR EXISTS (
+               SELECT 1
+               FROM tb_artist selected_artist
+               WHERE selected_artist.id = #{artistId}
+                 AND (
+                     primary_artist.name LIKE CONCAT('%', selected_artist.name, '%')
                      OR EXISTS (
                          SELECT 1
                          FROM tb_song_artist sa
+                                  JOIN tb_artist credit_artist ON credit_artist.id = sa.artist_id
                          WHERE sa.song_id = s.id
-                           AND sa.artist_id = a.id
+                           AND credit_artist.name LIKE CONCAT('%', selected_artist.name, '%')
                      )
-        WHERE a.id = #{artistId}
+                 )
+           )
+        ORDER BY s.release_time DESC, s.id DESC
     </select>
 
 </mapper>
