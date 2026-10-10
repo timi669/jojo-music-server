@@ -18,6 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(loginInterceptor)
                 .addPathPatterns("/**") // 拦截所有请求
                 .excludePathPatterns(
+                        "/error",
                         "/admin/login", "/admin/logout", "/admin/register",
                         "/user/login", "/user/logout", "/user/register",
                         "/user/sendVerificationCode", "/user/resetUserPassword",

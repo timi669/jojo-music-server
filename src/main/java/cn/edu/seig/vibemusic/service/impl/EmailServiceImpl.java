@@ -8,9 +8,11 @@ import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * <p>
@@ -39,8 +41,15 @@ public class EmailServiceImpl implements EmailService {
      * @return 发送结果，包含是否成功
      */
     public boolean sendEmail(String to, String subject, String content) {
-        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        if (!StringUtils.hasText(mailSender.getHost())
+                || !StringUtils.hasText(from)
+                || !StringUtils.hasText(mailSender.getPassword())) {
+            log.error("邮件发送失败：请配置 MAIL_HOST、MAIL_USERNAME 和 MAIL_PASSWORD 环境变量");
+            return false;
+        }
+
         try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage);
             helper.setFrom(from);
             helper.setTo(to);
@@ -48,8 +57,8 @@ public class EmailServiceImpl implements EmailService {
             helper.setText(content);
             mailSender.send(mimeMessage);
             return true;
-        } catch (MessagingException e) {
-            log.error(MessageConstant.EMAIL_SEND_FAILED, e);
+        } catch (MessagingException | MailException e) {
+            log.error("{}：请检查 SMTP 主机、端口、账号及邮件服务商授权码", MessageConstant.EMAIL_SEND_FAILED, e);
             return false;
         }
     }

@@ -27,10 +27,11 @@ spring:
 
   # 配置邮件服务
   mail:
-    # 配置邮箱账户和密码
-    host: smtp.example.com # 修改你的 SMTP 服务器地址
-    username: your-email@example.com # 修改你的邮箱账号
-    password: YOUR_EMAIL_APP_PASSWORD # 修改你的邮箱应用密码或授权码
+    # 通过环境变量配置 SMTP；默认留空，避免示例值被误认为可用配置
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     protocol: smtp
     properties:
       mail:
@@ -39,11 +40,6 @@ spring:
           starttls:
             enable: true
             required: true
-          ssl:
-            enable: true
-          socketFactory:
-            port: 465
-            class: javax.net.ssl.SSLSocketFactory
           # 邮件服务超时时间配置
           connectiontimeout: 5000
           timeout: 3000

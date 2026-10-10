@@ -49,7 +49,7 @@
 
     <!-- 根据歌曲id列表查询歌曲列表 -->
     <select id="getSongsByIds" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">
-        SELECT DISTINCT
+        SELECT
         s.id AS songId,
         s.name AS songName,
         s.album,
@@ -60,7 +60,6 @@
         a.name AS artistName
         FROM tb_song s
         LEFT JOIN tb_artist a ON s.artist_id = a.id
-        LEFT JOIN tb_user_favorite u ON s.id = u.song_id
         WHERE
         <if test="songIds != null and songIds.size() > 0">
             s.id IN
@@ -86,7 +85,11 @@
         <if test="album != null and album.trim() != ''">
             AND s.album LIKE CONCAT('%', #{album}, '%')
         </if>
-        ORDER BY u.create_time DESC
+        ORDER BY FIELD(s.id,
+        <foreach collection="songIds" item="id" separator=",">
+            #{id}
+        </foreach>
+        )
     </select>
 
     <!-- 根据用户收藏的歌曲id列表获取歌曲风格 -->

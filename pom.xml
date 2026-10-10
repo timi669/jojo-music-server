@@ -108,10 +108,10 @@
             <version>4.4.0</version>
         </dependency>
 
-        <!--java mail依赖-->
+        <!--邮件发送依赖-->
         <dependency>
-            <groupId>org.eclipse.angus</groupId>
-            <artifactId>jakarta.mail</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
         <!--minio依赖-->

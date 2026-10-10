@@ -34,6 +34,7 @@ import org.springframework.util.DigestUtils;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -66,13 +67,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      */
     @Override
     public Result sendVerificationCode(String email) {
-        String verificationCode = emailService.sendVerificationCodeEmail(email);
+        String normalizedEmail = normalizeEmail(email);
+        String verificationCode = emailService.sendVerificationCodeEmail(normalizedEmail);
         if (verificationCode == null) {
             return Result.error(MessageConstant.EMAIL_SEND_FAILED);
         }
 
         // 将验证码存储到Redis中，设置过期时间为5分钟
-        stringRedisTemplate.opsForValue().set("verificationCode:" + email, verificationCode, 5, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set("verificationCode:" + normalizedEmail, verificationCode, 5, TimeUnit.MINUTES);
         return Result.success(MessageConstant.EMAIL_SEND_SUCCESS);
     }
 
@@ -85,8 +87,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      */
     @Override
     public boolean verifyVerificationCode(String email, String verificationCode) {
-        String storedCode = stringRedisTemplate.opsForValue().get("verificationCode:" + email);
-        return storedCode != null && storedCode.equals(verificationCode);
+        if (verificationCode == null) {
+            return false;
+        }
+        String storedCode = stringRedisTemplate.opsForValue().get("verificationCode:" + normalizeEmail(email));
+        return storedCode != null && storedCode.equalsIgnoreCase(verificationCode.trim());
     }
 
     /**
@@ -98,28 +103,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     @Override
     @CacheEvict(cacheNames = "userCache", allEntries = true)
     public Result register(UserRegisterDTO userRegisterDTO) {
-        // 删除Redis中的验证码
-        stringRedisTemplate.delete("verificationCode:" + userRegisterDTO.getEmail());
+        String email = normalizeEmail(userRegisterDTO.getEmail());
 
         User userByUsername = userMapper.selectOne(new QueryWrapper<User>().eq("username", userRegisterDTO.getUsername()));
         if (userByUsername != null) {
             return Result.error(MessageConstant.USERNAME + MessageConstant.ALREADY_EXISTS);
         }
 
-        User userByEmail = userMapper.selectOne(new QueryWrapper<User>().eq("email", userRegisterDTO.getEmail()));
+        User userByEmail = userMapper.selectOne(new QueryWrapper<User>().eq("email", email));
         if (userByEmail != null) {
             return Result.error(MessageConstant.EMAIL + MessageConstant.ALREADY_EXISTS);
         }
 
         String passwordMD5 = DigestUtils.md5DigestAsHex(userRegisterDTO.getPassword().getBytes());
         User user = new User();
-        user.setUsername(userRegisterDTO.getUsername()).setPassword(passwordMD5).setEmail(userRegisterDTO.getEmail())
+        user.setUsername(userRegisterDTO.getUsername()).setPassword(passwordMD5).setEmail(email)
                 .setCreateTime(LocalDateTime.now()).setUpdateTime(LocalDateTime.now())
                 .setUserStatus(UserStatusEnum.ENABLE);
 
         if (userMapper.insert(user) == 0) {
             return Result.error(MessageConstant.REGISTER + MessageConstant.FAILED);
         }
+        stringRedisTemplate.delete("verificationCode:" + email);
         return Result.success(MessageConstant.REGISTER + MessageConstant.SUCCESS);
     }
 
@@ -282,10 +287,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      */
     @Override
     public Result resetUserPassword(UserResetPasswordDTO userResetPasswordDTO) {
-        // 删除Redis中的验证码
-        stringRedisTemplate.delete("verificationCode:" + userResetPasswordDTO.getEmail());
+        String email = normalizeEmail(userResetPasswordDTO.getEmail());
 
-        User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", userResetPasswordDTO.getEmail()));
+        // 删除Redis中的验证码
+        stringRedisTemplate.delete("verificationCode:" + email);
+
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", email));
         if (user == null) {
             return Result.error(MessageConstant.EMAIL + MessageConstant.NOT_EXIST);
         }
@@ -300,6 +307,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         return Result.success(MessageConstant.PASSWORD + MessageConstant.RESET + MessageConstant.SUCCESS);
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }
 
     /**

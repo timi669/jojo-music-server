@@ -9,6 +9,7 @@ import cn.edu.seig.vibemusic.util.JwtUtil;
 import cn.edu.seig.vibemusic.util.ThreadLocalUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
+@Slf4j
 public class LoginInterceptor implements HandlerInterceptor {
 
     @Autowired
@@ -94,6 +96,7 @@ public class LoginInterceptor implements HandlerInterceptor {
                 ThreadLocalUtil.set(claims);
                 return true;
             } else {
+                log.warn("Permission denied for role '{}' on request path '{}'", role, requestURI);
                 sendErrorResponse(response, 403, MessageConstant.NO_PERMISSION); // 无权限访问
                 return false;
             }
