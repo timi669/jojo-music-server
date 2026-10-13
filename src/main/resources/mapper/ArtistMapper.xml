@@ -11,6 +11,8 @@
         <result column="birth" property="birth"/>
         <result column="area" property="area"/>
         <result column="introduction" property="introduction"/>
+        <result column="avatar_source" property="avatarSource"/>
+        <result column="introduction_source" property="introductionSource"/>
     </resultMap>
 
     <!-- 查询歌手详情 -->
@@ -21,10 +23,27 @@
                a.avatar       AS avatar,
                a.birth        AS birth,
                a.area         AS area,
-               a.introduction AS introduction
+               a.introduction AS introduction,
+               a.avatar_source AS avatar_source,
+               a.introduction_source AS introduction_source
         FROM tb_artist a
         WHERE a.id = #{artistId}
     </select>
+
+    <update id="fillMissingProfileFields">
+        UPDATE tb_artist
+        <set>
+            <if test="avatar != null and avatar != ''">
+                avatar_source = CASE WHEN avatar IS NULL OR TRIM(avatar) = '' THEN #{avatarSource} ELSE avatar_source END,
+                avatar = CASE WHEN avatar IS NULL OR TRIM(avatar) = '' THEN #{avatar} ELSE avatar END,
+            </if>
+            <if test="introduction != null and introduction != ''">
+                introduction_source = CASE WHEN introduction IS NULL OR TRIM(introduction) = '' THEN #{introductionSource} ELSE introduction_source END,
+                introduction = CASE WHEN introduction IS NULL OR TRIM(introduction) = '' THEN #{introduction} ELSE introduction END,
+            </if>
+        </set>
+        WHERE id = #{artistId}
+    </update>
 
     <!-- 查询该歌手参与的全部歌曲，包括主艺人和合作艺人 -->
     <select id="getSongsByArtistId" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">

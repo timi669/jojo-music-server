@@ -2,6 +2,7 @@ package cn.edu.seig.vibemusic.controller;
 
 
 import cn.edu.seig.vibemusic.model.dto.*;
+import cn.edu.seig.vibemusic.model.dto.ArtistProfileEnrichmentStatus;
 import cn.edu.seig.vibemusic.model.entity.Artist;
 import cn.edu.seig.vibemusic.model.entity.Playlist;
 import cn.edu.seig.vibemusic.model.vo.ArtistNameVO;
@@ -10,6 +11,7 @@ import cn.edu.seig.vibemusic.model.vo.UserManagementVO;
 import cn.edu.seig.vibemusic.result.PageResult;
 import cn.edu.seig.vibemusic.result.Result;
 import cn.edu.seig.vibemusic.service.*;
+import cn.edu.seig.vibemusic.service.impl.ArtistProfileEnrichmentService;
 import cn.edu.seig.vibemusic.util.BindingResultUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +46,8 @@ public class AdminController {
     private IPlaylistService playlistService;
     @Autowired
     private MinioService minioService;
+    @Autowired
+    private ArtistProfileEnrichmentService artistProfileEnrichmentService;
 
     /**
      * 注册管理员
@@ -206,6 +210,19 @@ public class AdminController {
     @PostMapping("/getAllArtists")
     public Result<PageResult<Artist>> getAllArtists(@RequestBody ArtistDTO artistDTO) {
         return artistService.getAllArtistsAndDetail(artistDTO);
+    }
+
+    @PostMapping("/enrichMissingArtistProfiles")
+    public Result<ArtistProfileEnrichmentStatus> enrichMissingArtistProfiles() {
+        return Result.success(artistProfileEnrichmentService.start());
+    }
+
+    @GetMapping("/artistProfileEnrichmentStatus")
+    public Result<ArtistProfileEnrichmentStatus> getArtistProfileEnrichmentStatus() {
+        ArtistProfileEnrichmentStatus status = artistProfileEnrichmentService.getStatus();
+        return status == null
+                ? Result.error("尚未启动歌手资料补全任务")
+                : Result.success(status);
     }
 
     /**

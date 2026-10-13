@@ -5,6 +5,7 @@ import cn.edu.seig.vibemusic.model.vo.ArtistDetailVO;
 import cn.edu.seig.vibemusic.model.vo.SongVO;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -24,5 +25,13 @@ public interface ArtistMapper extends BaseMapper<Artist> {
 
     // 查询歌手作为主艺人或合作艺人参与的歌曲
     List<SongVO> getSongsByArtistId(Long artistId);
+
+    int fillMissingProfileFields(
+            @Param("artistId") Long artistId,
+            @Param("avatar") String avatar,
+            @Param("avatarSource") String avatarSource,
+            @Param("introduction") String introduction,
+            @Param("introductionSource") String introductionSource
+    );
 
 }

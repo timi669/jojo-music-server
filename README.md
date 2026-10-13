@@ -53,6 +53,23 @@
    ```
 
 5. 修改 `src/main/resources/application.yml` 中的数据库、Redis 和 MinIO 配置；邮件配置通过环境变量提供：`MAIL_HOST`、`MAIL_PORT`（默认 `587`）、`MAIL_USERNAME` 和 `MAIL_PASSWORD`。`MAIL_PASSWORD` 应使用邮箱服务商提供的 SMTP 授权码，不要提交到版本库。
+6. 对已有数据库执行 `sql/migrations/002_add_artist_metadata_sources.sql`，为歌手简介扩容并保存图片/简介来源链接。
+
+## 歌手资料自动补全
+
+管理员可在后台“歌手管理”页点击“自动补全缺失资料”。服务只查询头像或简介为空的歌手，并且只写入仍为空的字段，不覆盖手工维护的资料。匹配采用 MusicBrainz 唯一精确姓名结果；同名歧义、合作艺人名称或没有可靠维基来源的记录会跳过并列出原因。
+
+简介来自对应的 Wikipedia 页面。头像仅在 Wikimedia Commons 提供了可验证许可信息时下载，并存入 MinIO；详情页会提供简介与头像的来源/授权页面链接。任务在服务端后台运行，管理页会显示进度和跳过/失败名单。
+
+如果后端运行环境不能直连这些站点，可让后端进程使用本机 V2Ray 的 **HTTP 代理端口**。设置环境变量 `ARTIST_METADATA_PROXY_HOST` 和 `ARTIST_METADATA_PROXY_PORT` 后再启动后端，例如 Windows PowerShell：
+
+```powershell
+$env:ARTIST_METADATA_PROXY_HOST = "127.0.0.1"
+$env:ARTIST_METADATA_PROXY_PORT = "10809"
+.\mvnw.cmd spring-boot:run
+```
+
+请在 V2Ray 客户端设置中确认实际的 HTTP 监听端口（`10809` 只是常见默认值；不要填 SOCKS 端口）。若后端由 IDE、Windows 服务或其他启动器运行，需在那个后端进程的环境变量中设置这两个值，并重启后端使配置生效。不设置代理变量时仍使用原有直连方式。
 
 ## 构建与运行
 

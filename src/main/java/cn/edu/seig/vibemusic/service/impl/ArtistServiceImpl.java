@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -301,6 +302,10 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
     @CacheEvict(cacheNames = "artistCache", allEntries = true)
     public Result updateArtist(ArtistUpdateDTO artistUpdateDTO) {
         Long artistId = artistUpdateDTO.getArtistId();
+        Artist existingArtist = artistMapper.selectById(artistId);
+        if (existingArtist == null) {
+            return Result.error(MessageConstant.ARTIST + MessageConstant.NOT_FOUND);
+        }
 
         Artist artistByArtistName = artistMapper.selectOne(new QueryWrapper<Artist>().eq("name", artistUpdateDTO.getArtistName()));
         if (artistByArtistName != null && !artistByArtistName.getArtistId().equals(artistId)) {
@@ -309,6 +314,10 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
 
         Artist artist = new Artist();
         BeanUtils.copyProperties(artistUpdateDTO, artist);
+        if (artistUpdateDTO.getIntroduction() != null
+                && !Objects.equals(existingArtist.getIntroduction(), artistUpdateDTO.getIntroduction())) {
+            artist.setIntroductionSource("");
+        }
         if (artistMapper.updateById(artist) == 0) {
             return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
         }
@@ -333,6 +342,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
         }
 
         artist.setAvatar(avatar);
+        artist.setAvatarSource("");
         if (artistMapper.updateById(artist) == 0) {
             return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
         }

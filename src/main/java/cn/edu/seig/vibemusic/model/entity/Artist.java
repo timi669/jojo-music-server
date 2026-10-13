@@ -73,4 +73,16 @@ public class Artist implements Serializable {
     @TableField("introduction")
     private String introduction;
 
+    /**
+     * 歌手头像来源页面
+     */
+    @TableField("avatar_source")
+    private String avatarSource;
+
+    /**
+     * 歌手简介来源页面
+     */
+    @TableField("introduction_source")
+    private String introductionSource;
+
 }
