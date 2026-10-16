@@ -36,6 +36,11 @@ public class MinioServiceImpl implements MinioService {
      */
     @Override
     public String uploadFile(MultipartFile file, String folder) {
+        return uploadFile(file, folder, file.getContentType());
+    }
+
+    @Override
+    public String uploadFile(MultipartFile file, String folder, String contentType) {
         try {
             // 生成唯一文件名
             String fileName = folder + "/" + UUID.randomUUID() + "-" + file.getOriginalFilename();
@@ -49,7 +54,7 @@ public class MinioServiceImpl implements MinioService {
                             .bucket(bucketName)
                             .object(fileName)
                             .stream(inputStream, file.getSize(), -1)
-                            .contentType(file.getContentType())
+                            .contentType(contentType)
                             .build()
             );
 

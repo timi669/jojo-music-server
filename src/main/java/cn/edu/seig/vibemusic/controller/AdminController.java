@@ -11,6 +11,7 @@ import cn.edu.seig.vibemusic.model.vo.UserManagementVO;
 import cn.edu.seig.vibemusic.result.PageResult;
 import cn.edu.seig.vibemusic.result.Result;
 import cn.edu.seig.vibemusic.service.*;
+import cn.edu.seig.vibemusic.service.impl.AudioUploadValidationService;
 import cn.edu.seig.vibemusic.service.impl.ArtistProfileEnrichmentService;
 import cn.edu.seig.vibemusic.util.BindingResultUtil;
 import jakarta.validation.Valid;
@@ -48,6 +49,8 @@ public class AdminController {
     private MinioService minioService;
     @Autowired
     private ArtistProfileEnrichmentService artistProfileEnrichmentService;
+    @Autowired
+    private AudioUploadValidationService audioUploadValidationService;
 
     /**
      * 注册管理员
@@ -359,9 +362,26 @@ public class AdminController {
      * @return 结果
      */
     @PatchMapping("/updateSongAudio/{id}")
-    public Result updateSongAudio(@PathVariable("id") Long songId, @RequestParam("audio") MultipartFile audio, @RequestParam("duration") String duration) {
-        String audioUrl = minioService.uploadFile(audio, "songs");  // 上传到 songs 目录
-        return songService.updateSongAudio(songId, audioUrl, duration);
+    public Result updateSongAudio(@PathVariable("id") Long songId, @RequestParam("audio") MultipartFile audio) {
+        AudioUploadValidationService.AudioValidationResult validation;
+        try {
+            validation = audioUploadValidationService.validate(audio);
+        } catch (AudioUploadValidationService.AudioValidationException exception) {
+            return Result.error(exception.getMessage());
+        }
+
+        String validatedDuration = String.format(java.util.Locale.ROOT, "%.3f", validation.durationSeconds());
+        String audioUrl = minioService.uploadFile(audio, "songs", validation.contentType());
+        Result updateResult = songService.updateSongAudio(songId, audioUrl, validatedDuration);
+        if (updateResult.getCode() == null || updateResult.getCode() != 0) {
+            return updateResult;
+        }
+
+        String message = updateResult.getMessage();
+        if (validation.warning() != null) {
+            message += " 兼容性提示：" + validation.warning();
+        }
+        return Result.success(message, validation);
     }
 
     /**

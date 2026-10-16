@@ -12,6 +12,11 @@ public interface MinioService {
     String uploadFile(MultipartFile file, String folder);
 
     /**
+     * Upload a file with a content type determined from validated file contents.
+     */
+    String uploadFile(MultipartFile file, String folder, String contentType);
+
+    /**
      * 删除 MinIO 文件
      * @param fileUrl 文件 URL
      */

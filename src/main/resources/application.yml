@@ -20,6 +20,13 @@ spring:
       max-file-size: 100MB # 设置最大上传文件大小为100MB
       max-request-size: 100MB # 设置最大请求大小为100MB
 
+media:
+  audio-validation:
+      # Full audio validation requires FFmpeg and FFprobe on PATH or configured via these environment variables.
+      ffprobe-path: ${MEDIA_FFPROBE_PATH:ffprobe}
+      ffmpeg-path: ${MEDIA_FFMPEG_PATH:ffmpeg}
+      timeout-seconds: ${MEDIA_VALIDATION_TIMEOUT_SECONDS:120}
+
   # 对于注解的Redis缓存数据统一设置有效期为10分钟，单位毫秒
   cache:
     redis:
