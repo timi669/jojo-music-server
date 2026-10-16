@@ -12,8 +12,16 @@ public class ArtistProfileEnrichmentStatus {
     private volatile String state;
     private volatile long total;
     private volatile long processed;
+    private volatile long audioSongsTotal;
+    private volatile long audioSongsProcessed;
+    private volatile long audioFilesScanned;
+    private volatile long uniqueArtistsFound;
+    private volatile long artistsAdded;
+    private volatile long songLinksAdded;
     private volatile long avatarsAdded;
     private volatile long introductionsAdded;
+    private volatile long gendersAdded;
+    private volatile long areasAdded;
     private volatile long skipped;
     private volatile long failed;
     private volatile String currentArtist;

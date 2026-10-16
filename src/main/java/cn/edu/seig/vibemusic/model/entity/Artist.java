@@ -43,7 +43,7 @@ public class Artist implements Serializable {
     private String artistName;
 
     /**
-     * 歌手性别：0-男，1-女
+     * 歌手类型：0-男，1-女，2-组合/乐队
      */
     @TableField("gender")
     private Integer gender;
@@ -72,17 +72,5 @@ public class Artist implements Serializable {
      */
     @TableField("introduction")
     private String introduction;
-
-    /**
-     * 歌手头像来源页面
-     */
-    @TableField("avatar_source")
-    private String avatarSource;
-
-    /**
-     * 歌手简介来源页面
-     */
-    @TableField("introduction_source")
-    private String introductionSource;
 
 }

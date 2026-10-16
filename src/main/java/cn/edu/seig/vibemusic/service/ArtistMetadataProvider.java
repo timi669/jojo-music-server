@@ -9,9 +9,9 @@ public interface ArtistMetadataProvider {
 
     record ArtistMetadata(
             String imageUrl,
-            String avatarSource,
             String introduction,
-            String introductionSource
+            Integer gender,
+            String area
     ) {
     }
 }

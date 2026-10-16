@@ -11,8 +11,6 @@
         <result column="birth" property="birth"/>
         <result column="area" property="area"/>
         <result column="introduction" property="introduction"/>
-        <result column="avatar_source" property="avatarSource"/>
-        <result column="introduction_source" property="introductionSource"/>
     </resultMap>
 
     <!-- 查询歌手详情 -->
@@ -23,23 +21,25 @@
                a.avatar       AS avatar,
                a.birth        AS birth,
                a.area         AS area,
-               a.introduction AS introduction,
-               a.avatar_source AS avatar_source,
-               a.introduction_source AS introduction_source
+               a.introduction AS introduction
         FROM tb_artist a
         WHERE a.id = #{artistId}
     </select>
 
-    <update id="fillMissingProfileFields">
+    <update id="updateArtistProfileMetadata">
         UPDATE tb_artist
         <set>
             <if test="avatar != null and avatar != ''">
-                avatar_source = CASE WHEN avatar IS NULL OR TRIM(avatar) = '' THEN #{avatarSource} ELSE avatar_source END,
-                avatar = CASE WHEN avatar IS NULL OR TRIM(avatar) = '' THEN #{avatar} ELSE avatar END,
+                avatar = #{avatar},
             </if>
             <if test="introduction != null and introduction != ''">
-                introduction_source = CASE WHEN introduction IS NULL OR TRIM(introduction) = '' THEN #{introductionSource} ELSE introduction_source END,
-                introduction = CASE WHEN introduction IS NULL OR TRIM(introduction) = '' THEN #{introduction} ELSE introduction END,
+                introduction = #{introduction},
+            </if>
+            <if test="gender != null">
+                gender = #{gender},
+            </if>
+            <if test="area != null and area != ''">
+                area = #{area},
             </if>
         </set>
         WHERE id = #{artistId}

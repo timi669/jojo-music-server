@@ -24,6 +24,13 @@ import java.util.List;
 @Mapper
 public interface SongMapper extends BaseMapper<Song> {
 
+    @Select("""
+            SELECT id AS songId, artist_id AS artistId, audio_url AS audioUrl
+            FROM tb_song
+            ORDER BY id ASC
+            """)
+    List<Song> selectAudioArtistScanTargets();
+
     // 获取歌曲列表
     @Select("""
                 SELECT 

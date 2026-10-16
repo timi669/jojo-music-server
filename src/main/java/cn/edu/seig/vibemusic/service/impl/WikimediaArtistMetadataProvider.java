@@ -3,6 +3,8 @@ package cn.edu.seig.vibemusic.service.impl;
 import cn.edu.seig.vibemusic.service.ArtistMetadataProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +21,9 @@ import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -28,11 +32,23 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
 
     private static final int MINIMUM_MUSICBRAINZ_SCORE = 90;
     private static final int MUSICBRAINZ_RESULT_LIMIT = 100;
+    // This app is primarily used in Chinese, so prefer Chinese biographies when available
+    // and only fall back to other languages if the Chinese article is missing.
     private static final List<String> PREFERRED_WIKIPEDIA_LANGUAGES =
-            List.of("en", "zh", "ja", "ko", "fr", "de", "es", "pt", "it");
+            List.of("zh", "en", "ja", "ko", "fr", "de", "es", "pt", "it");
     private static final Pattern WIKIDATA_ID = Pattern.compile("Q[1-9][0-9]*");
+    private static final Pattern MUSIC_DESCRIPTION = Pattern.compile(
+            "\\b(singer|songwriter|musician|rapper|composer|producer|dj|musical artist|music group|band|"
+                    + "vocal group|orchestra|choir)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern GROUP_DESCRIPTION = Pattern.compile(
+            "\\b(group|band|orchestra|choir|duo|trio|quartet)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
     private static final String USER_AGENT =
             "JOJO-MUSIC/1.0 (https://github.com/timi669/jojo-music-server; artist profile enrichment)";
+    private static final Logger log = LoggerFactory.getLogger(WikimediaArtistMetadataProvider.class);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -68,29 +84,40 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
 
     @Override
     public Optional<ArtistMetadata> lookup(String artistName) throws IOException, InterruptedException {
-        JsonNode searchResults = musicBrainzSearch(artistName);
-        if (!hasUniqueExactMatch(artistName, searchResults)) {
-            return Optional.empty();
-        }
-        List<JsonNode> exactMatches = new ArrayList<>();
-        for (JsonNode candidate : searchResults.path("artists")) {
-            if (normalize(candidate.path("name").asText()).equals(normalize(artistName))) {
-                exactMatches.add(candidate);
+        JsonNode artistDetails = null;
+        try {
+            JsonNode searchResults = musicBrainzSearch(artistName);
+            if (hasUniqueExactMatch(artistName, searchResults)) {
+                for (JsonNode candidate : searchResults.path("artists")) {
+                    if (normalize(candidate.path("name").asText()).equals(normalize(artistName))) {
+                        String artistId = candidate.path("id").asText();
+                        if (!artistId.isBlank()) {
+                            artistDetails = musicBrainzArtistDetails(artistId);
+                        }
+                        break;
+                    }
+                }
             }
+        } catch (IOException exception) {
+            log.warn("MusicBrainz lookup failed for '{}'; trying exact Wikidata matching: {}",
+                    artistName, exception.getMessage());
         }
 
-        String artistId = exactMatches.get(0).path("id").asText();
-        if (artistId.isBlank()) {
+        String wikidataId = artistDetails == null ? "" : findWikidataId(artistDetails);
+        Optional<WikidataArtistMatch> wikidataMatch = Optional.empty();
+        if (wikidataId.isBlank()) {
+            wikidataMatch = wikidataArtistSearch(artistName);
+            wikidataId = wikidataMatch.map(WikidataArtistMatch::id).orElse("");
+        }
+        if (wikidataId.isBlank() && artistDetails == null) {
             return Optional.empty();
         }
 
-        JsonNode artistDetails = musicBrainzArtistDetails(artistId);
-        String wikidataId = findWikidataId(artistDetails);
-        String wikipediaUrl = findWikipediaUrl(artistDetails);
         WikidataProfile wikidataProfile = wikidataId.isBlank()
                 ? WikidataProfile.empty()
                 : wikidataProfile(wikidataId);
 
+        String wikipediaUrl = artistDetails == null ? "" : findWikipediaUrl(artistDetails);
         if (wikipediaUrl.isBlank()) {
             wikipediaUrl = wikidataProfile.wikipediaUrl();
         }
@@ -100,17 +127,62 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
             imageName = summary.imageName();
         }
         CommonsImage commonsImage = imageName.isBlank() ? CommonsImage.empty() : commonsImage(imageName);
+        Integer gender = artistDetails != null && "Group".equalsIgnoreCase(artistDetails.path("type").asText())
+                || wikidataMatch.map(WikidataArtistMatch::group).orElse(false)
+                ? 2
+                : wikidataProfile.gender();
+        if (gender == null && artistDetails != null) {
+            gender = switch (artistDetails.path("gender").asText("").toLowerCase(java.util.Locale.ROOT)) {
+                case "male" -> 0;
+                case "female" -> 1;
+                default -> null;
+            };
+        }
 
-        if (summary.introduction().isBlank() && commonsImage.imageUrl().isBlank()) {
+        if (summary.introduction().isBlank()
+                && commonsImage.imageUrl().isBlank()
+                && gender == null
+                && wikidataProfile.area().isBlank()) {
             return Optional.empty();
         }
-        String biographySource = summary.introduction().isBlank() ? "" : summary.sourceUrl();
         return Optional.of(new ArtistMetadata(
                 commonsImage.imageUrl(),
-                commonsImage.sourceUrl(),
                 summary.introduction(),
-                biographySource
+                gender,
+                wikidataProfile.area()
         ));
+    }
+
+    private Optional<WikidataArtistMatch> wikidataArtistSearch(String artistName)
+            throws IOException, InterruptedException {
+        URI uri = URI.create("https://www.wikidata.org/w/api.php?action=wbsearchentities&search="
+                + encode(artistName)
+                + "&language=en&uselang=en&format=json&limit=10");
+        JsonNode results = getJson(uri, false).path("search");
+        return selectExactWikidataArtist(artistName, results);
+    }
+
+    static Optional<WikidataArtistMatch> selectExactWikidataArtist(String artistName, JsonNode candidates) {
+        Map<String, WikidataArtistMatch> matches = new LinkedHashMap<>();
+        for (JsonNode candidate : candidates) {
+            String id = candidate.path("id").asText("");
+            String label = candidate.path("label").asText("");
+            String description = candidate.path("description").asText("");
+            boolean exactName = normalize(label).equals(normalize(artistName));
+            for (JsonNode alias : candidate.path("aliases")) {
+                String aliasName = alias.isTextual() ? alias.asText() : alias.path("value").asText("");
+                exactName |= normalize(aliasName).equals(normalize(artistName));
+            }
+            if (WIKIDATA_ID.matcher(id).matches()
+                    && exactName
+                    && MUSIC_DESCRIPTION.matcher(description).find()) {
+                matches.putIfAbsent(id, new WikidataArtistMatch(
+                        id,
+                        GROUP_DESCRIPTION.matcher(description).find()
+                ));
+            }
+        }
+        return matches.size() == 1 ? Optional.of(matches.values().iterator().next()) : Optional.empty();
     }
 
     private JsonNode musicBrainzSearch(String artistName) throws IOException, InterruptedException {
@@ -138,7 +210,39 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
         String imageName = entity.path("claims").path("P18").path(0)
                 .path("mainsnak").path("datavalue").path("value").asText("");
         String wikipediaUrl = preferredWikipediaSitelink(entity.path("sitelinks"));
-        return new WikidataProfile(imageName, wikipediaUrl);
+        String genderId = firstClaimEntityId(entity, "P21");
+        Integer gender = switch (genderId) {
+            case "Q6581097" -> 0;
+            case "Q6581072" -> 1;
+            default -> null;
+        };
+        String countryId = firstClaimEntityId(entity, "P27");
+        String area = countryId.isBlank() ? "" : wikidataLabel(countryId);
+        return new WikidataProfile(imageName, wikipediaUrl, gender, area);
+    }
+
+    private String firstClaimEntityId(JsonNode entity, String property) {
+        for (JsonNode claim : entity.path("claims").path(property)) {
+            String id = claim.path("mainsnak").path("datavalue").path("value").path("id").asText("");
+            if (WIKIDATA_ID.matcher(id).matches()) {
+                return id;
+            }
+        }
+        return "";
+    }
+
+    private String wikidataLabel(String entityId) throws IOException, InterruptedException {
+        JsonNode response = getJson(URI.create("https://www.wikidata.org/w/api.php?action=wbgetentities"
+                + "&ids=" + entityId + "&props=labels&languages=zh%7Cen&format=json"), false);
+        JsonNode labels = response.path("entities").path(entityId).path("labels");
+        String[] preferredLanguages = {"zh", "zh-hans", "zh-cn", "en"};
+        for (String language : preferredLanguages) {
+            String label = labels.path(language).path("value").asText("").trim();
+            if (!label.isBlank()) {
+                return label;
+            }
+        }
+        return "";
     }
 
     private String preferredWikipediaSitelink(JsonNode sitelinks) {
@@ -164,14 +268,13 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
         String title = articleUri.getRawPath().substring("/wiki/".length());
         URI summaryUri = URI.create("https://" + language + ".wikipedia.org/api/rest_v1/page/summary/" + title);
         JsonNode response = getJson(summaryUri, false);
-        String extract = truncate(response.path("extract").asText("").trim(), 1000);
-        String sourceUrl = response.path("content_urls").path("desktop").path("page").asText(wikipediaUrl);
+        String extract = response.path("extract").asText("").trim();
         String thumbnail = response.path("thumbnail").path("source").asText("");
         if (thumbnail.isBlank()) {
             thumbnail = response.path("originalimage").path("source").asText("");
         }
         String imageName = commonsFileNameFromUploadUrl(thumbnail);
-        return new WikiSummary(extract, sourceUrl, imageName);
+        return new WikiSummary(extract, imageName);
     }
 
     private CommonsImage commonsImage(String imageName) throws IOException, InterruptedException {
@@ -193,16 +296,12 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
             return CommonsImage.empty();
         }
         String imageUrl = imageInfo.path("thumburl").asText(imageInfo.path("url").asText(""));
-        String sourceUrl = imageInfo.path("descriptionurl").asText("");
-        if (sourceUrl.isBlank()) {
-            return CommonsImage.empty();
-        }
         URI imageUri = URI.create(imageUrl);
         if (!"https".equalsIgnoreCase(imageUri.getScheme())
                 || !isTrustedWikimediaImageHost(imageUri.getHost())) {
             return CommonsImage.empty();
         }
-        return new CommonsImage(imageUrl, sourceUrl);
+        return new CommonsImage(imageUrl);
     }
 
     private JsonNode getJson(URI uri, boolean musicBrainz) throws IOException, InterruptedException {
@@ -356,29 +455,24 @@ public class WikimediaArtistMetadataProvider implements ArtistMetadataProvider {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
-    private String truncate(String value, int maximumCodePoints) {
-        int codePoints = value.codePointCount(0, value.length());
-        if (codePoints <= maximumCodePoints) {
-            return value;
-        }
-        return value.substring(0, value.offsetByCodePoints(0, maximumCodePoints)).stripTrailing() + "…";
-    }
-
-    private record WikidataProfile(String imageName, String wikipediaUrl) {
+    private record WikidataProfile(String imageName, String wikipediaUrl, Integer gender, String area) {
         static WikidataProfile empty() {
-            return new WikidataProfile("", "");
+            return new WikidataProfile("", "", null, "");
         }
     }
 
-    private record WikiSummary(String introduction, String sourceUrl, String imageName) {
+    record WikidataArtistMatch(String id, boolean group) {
+    }
+
+    private record WikiSummary(String introduction, String imageName) {
         static WikiSummary empty() {
-            return new WikiSummary("", "", null);
+            return new WikiSummary("", null);
         }
     }
 
-    private record CommonsImage(String imageUrl, String sourceUrl) {
+    private record CommonsImage(String imageUrl) {
         static CommonsImage empty() {
-            return new CommonsImage("", "");
+            return new CommonsImage("");
         }
     }
 }

@@ -35,7 +35,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -54,8 +53,21 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
     private static final int UNCLASSIFIED_GENDER = -2;
     private static final String OTHER_AREA = "__OTHER__";
     private static final String UNKNOWN_AREA = "__UNKNOWN__";
-    private static final List<String> CLASSIFIED_AREAS = List.of(
-            "China", "United States", "Canada", "Taiwan", "South Korea", "Japan", "Brazil");
+    private static final List<List<String>> CLASSIFIED_AREA_VALUES = List.of(
+            List.of("China", "中国", "中國", "中华人民共和国", "中華人民共和國"),
+            List.of("United States", "United States of America", "USA", "美国", "美國",
+                    "美利坚合众国", "美利堅合眾國"),
+            List.of("Canada", "加拿大"),
+            List.of("Taiwan", "Taiwan, Province of China", "中国台湾", "中國台灣", "台湾", "臺灣",
+                    "中华民国", "中華民國"),
+            List.of("South Korea", "Korea, Republic of", "韩国", "韓國", "大韩民国", "大韓民國"),
+            List.of("Japan", "日本"),
+            List.of("Brazil", "巴西")
+    );
+    private static final List<String> ALL_CLASSIFIED_AREA_VALUES = CLASSIFIED_AREA_VALUES.stream()
+            .flatMap(List::stream)
+            .distinct()
+            .toList();
 
     @Autowired
     private ArtistMapper artistMapper;
@@ -71,7 +83,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
         applyArtistDemographicFilters(queryWrapper, artistDTO.getGender(), artistDTO.getArea());
     }
 
-    private void applyArtistDemographicFilters(QueryWrapper<Artist> queryWrapper, Integer gender, String area) {
+    static void applyArtistDemographicFilters(QueryWrapper<Artist> queryWrapper, Integer gender, String area) {
         if (gender != null) {
             if (gender == UNCLASSIFIED_GENDER) {
                 queryWrapper.isNull("gender");
@@ -83,11 +95,15 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
             return;
         }
         if (OTHER_AREA.equals(area)) {
-            queryWrapper.notIn("area", CLASSIFIED_AREAS).isNotNull("area").ne("area", "");
+            queryWrapper.notIn("area", ALL_CLASSIFIED_AREA_VALUES).isNotNull("area").ne("area", "");
         } else if (UNKNOWN_AREA.equals(area)) {
             queryWrapper.and(wrapper -> wrapper.isNull("area").or().eq("area", ""));
         } else {
-            queryWrapper.eq("area", area);
+            List<String> matchingAreaValues = CLASSIFIED_AREA_VALUES.stream()
+                    .filter(values -> values.contains(area))
+                    .findFirst()
+                    .orElse(List.of(area));
+            queryWrapper.in("area", matchingAreaValues);
         }
     }
 
@@ -98,12 +114,13 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手列表
      */
     @Override
-    @Cacheable(key = "'artist-classification-v3-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
+    @Cacheable(key = "'artist-classification-v5-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
     public Result<PageResult<ArtistVO>> getAllArtists(ArtistDTO artistDTO) {
         // 分页查询
         Page<Artist> page = new Page<>(artistDTO.getPageNum(), artistDTO.getPageSize());
         QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
         applyArtistFilters(queryWrapper, artistDTO);
+        queryWrapper.orderByAsc("name");
 
         IPage<Artist> artistPage = artistMapper.selectPage(page, queryWrapper);
         if (artistPage.getRecords().size() == 0) {
@@ -128,7 +145,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手列表
      */
     @Override
-    @Cacheable(key = "'artist-admin-v3-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
+    @Cacheable(key = "'artist-admin-v5-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
     public Result<PageResult<Artist>> getAllArtistsAndDetail(ArtistDTO artistDTO) {
         // 分页查询
         Page<Artist> page = new Page<>(artistDTO.getPageNum(), artistDTO.getPageSize());
@@ -314,10 +331,6 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
 
         Artist artist = new Artist();
         BeanUtils.copyProperties(artistUpdateDTO, artist);
-        if (artistUpdateDTO.getIntroduction() != null
-                && !Objects.equals(existingArtist.getIntroduction(), artistUpdateDTO.getIntroduction())) {
-            artist.setIntroductionSource("");
-        }
         if (artistMapper.updateById(artist) == 0) {
             return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
         }
@@ -340,9 +353,8 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
         if (avatarUrl != null && !avatarUrl.isEmpty()) {
             minioService.deleteFile(avatarUrl);
         }
-
         artist.setAvatar(avatar);
-        artist.setAvatarSource("");
+        artist.setAvatar(avatar);
         if (artistMapper.updateById(artist) == 0) {
             return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
         }

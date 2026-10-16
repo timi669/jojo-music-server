@@ -68,6 +68,42 @@ class WikimediaArtistMetadataProviderTest {
     }
 
     @Test
+    void selectsAnExactWikidataMusicEntityAndDisambiguatesNonMusicians() throws Exception {
+        JsonNode candidates = objectMapper.readTree("""
+                {"search":[
+                  {"id":"Q2831","label":"Michael Jackson","description":"American singer and songwriter"},
+                  {"id":"Q1928065","label":"Michael Jackson","description":"Wikimedia disambiguation page"},
+                  {"id":"Q6831566","label":"Michael Jackson","description":"British-American talk radio host"}
+                ]}
+                """).path("search");
+
+        var match = WikimediaArtistMetadataProvider.selectExactWikidataArtist("Michael Jackson", candidates)
+                .orElseThrow();
+
+        assertEquals("Q2831", match.id());
+        assertFalse(match.group());
+    }
+
+    @Test
+    void identifiesExactBandEntitiesAndRejectsAmbiguousMusicalMatches() throws Exception {
+        JsonNode band = objectMapper.readTree("""
+                {"search":[{"id":"Q12345","label":"Example Band","description":"American rock band"}]}
+                """).path("search");
+        JsonNode ambiguous = objectMapper.readTree("""
+                {"search":[
+                  {"id":"Q12345","label":"Pink","description":"American singer"},
+                  {"id":"Q12346","label":"Pink","description":"British singer"}
+                ]}
+                """).path("search");
+
+        var match = WikimediaArtistMetadataProvider.selectExactWikidataArtist("Example Band", band)
+                .orElseThrow();
+
+        assertTrue(match.group());
+        assertTrue(WikimediaArtistMetadataProvider.selectExactWikidataArtist("Pink", ambiguous).isEmpty());
+    }
+
+    @Test
     void configuresOptionalHttpProxyForExternalMetadataRequests() {
         var directClient = WikimediaArtistMetadataProvider.createHttpClient("", 0);
         assertTrue(directClient.proxy().isEmpty());

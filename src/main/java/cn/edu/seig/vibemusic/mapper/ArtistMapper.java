@@ -4,6 +4,7 @@ import cn.edu.seig.vibemusic.model.entity.Artist;
 import cn.edu.seig.vibemusic.model.vo.ArtistDetailVO;
 import cn.edu.seig.vibemusic.model.vo.SongVO;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -20,18 +21,31 @@ import java.util.List;
 @Mapper
 public interface ArtistMapper extends BaseMapper<Artist> {
 
+    @Select("""
+            SELECT id AS artistId, name AS artistName
+            FROM tb_artist
+            """)
+    List<Artist> selectArtistNamesForReconciliation();
+
+    @Select("""
+            SELECT id AS artistId, name AS artistName, gender, avatar, area, introduction
+            FROM tb_artist
+            ORDER BY id ASC
+            """)
+    List<Artist> selectProfileEnrichmentTargets();
+
     // 根据id查询歌手详情
     ArtistDetailVO getArtistDetailById(Long artistId);
 
     // 查询歌手作为主艺人或合作艺人参与的歌曲
     List<SongVO> getSongsByArtistId(Long artistId);
 
-    int fillMissingProfileFields(
+    int updateArtistProfileMetadata(
             @Param("artistId") Long artistId,
             @Param("avatar") String avatar,
-            @Param("avatarSource") String avatarSource,
             @Param("introduction") String introduction,
-            @Param("introductionSource") String introductionSource
+            @Param("gender") Integer gender,
+            @Param("area") String area
     );
 
 }

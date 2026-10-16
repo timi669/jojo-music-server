@@ -51,16 +51,6 @@ public class ArtistDetailVO implements Serializable {
     private String introduction;
 
     /**
-     * 歌手头像来源页面
-     */
-    private String avatarSource;
-
-    /**
-     * 歌手简介来源页面
-     */
-    private String introductionSource;
-
-    /**
      * 歌曲列表
      */
     private List<SongVO> songs;
