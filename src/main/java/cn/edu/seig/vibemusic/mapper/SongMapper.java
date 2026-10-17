@@ -4,12 +4,14 @@ import cn.edu.seig.vibemusic.model.entity.Song;
 import cn.edu.seig.vibemusic.model.vo.SongAdminVO;
 import cn.edu.seig.vibemusic.model.vo.SongDetailVO;
 import cn.edu.seig.vibemusic.model.vo.SongVO;
+import cn.edu.seig.vibemusic.model.vo.LyricSongCandidate;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -23,6 +25,56 @@ import java.util.List;
  */
 @Mapper
 public interface SongMapper extends BaseMapper<Song> {
+
+    @Select("""
+            <script>
+            SELECT s.id AS songId,
+                   s.name AS songName,
+                   a.name AS artistName,
+                   COALESCE(credits.artistCredits, a.name) AS artistCredits,
+                   s.lyric AS lyricUrl,
+                   (s.lyric IS NOT NULL AND TRIM(s.lyric) &lt;&gt; '') AS hasLyric
+            FROM tb_song s
+            LEFT JOIN tb_artist a ON a.id = s.artist_id
+            LEFT JOIN (
+                SELECT sa.song_id,
+                       GROUP_CONCAT(credit.name ORDER BY sa.credit_order SEPARATOR '|') AS artistCredits
+                FROM tb_song_artist sa
+                JOIN tb_artist credit ON credit.id = sa.artist_id
+                GROUP BY sa.song_id
+            ) credits ON credits.song_id = s.id
+            <if test="keyword != null and keyword != ''">
+                WHERE s.name LIKE CONCAT('%', #{keyword}, '%')
+                   OR a.name LIKE CONCAT('%', #{keyword}, '%')
+                   OR EXISTS (
+                       SELECT 1
+                       FROM tb_song_artist sa
+                       JOIN tb_artist credit ON credit.id = sa.artist_id
+                       WHERE sa.song_id = s.id
+                         AND credit.name LIKE CONCAT('%', #{keyword}, '%')
+                   )
+            </if>
+            ORDER BY s.id
+            <if test="limit != null">
+                LIMIT #{limit}
+            </if>
+            </script>
+            """)
+    List<LyricSongCandidate> selectLyricImportCandidates(
+            @Param("keyword") String keyword,
+            @Param("limit") Integer limit);
+
+    @Update("""
+            UPDATE tb_song
+            SET lyric = #{lyricUrl}
+            WHERE id = #{songId}
+              AND ((#{expectedLyric} IS NULL AND (lyric IS NULL OR TRIM(lyric) = ''))
+                   OR lyric = #{expectedLyric})
+            """)
+    int updateLyricIfUnchanged(
+            @Param("songId") Long songId,
+            @Param("expectedLyric") String expectedLyric,
+            @Param("lyricUrl") String lyricUrl);
 
     @Select("""
             SELECT id AS songId, artist_id AS artistId, audio_url AS audioUrl

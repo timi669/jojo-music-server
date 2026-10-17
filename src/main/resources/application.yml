@@ -20,21 +20,8 @@ spring:
       max-file-size: 100MB # 设置最大上传文件大小为100MB
       max-request-size: 100MB # 设置最大请求大小为100MB
 
-media:
-  audio-validation:
-      # Full audio validation requires FFmpeg and FFprobe on PATH or configured via these environment variables.
-      ffprobe-path: ${MEDIA_FFPROBE_PATH:ffprobe}
-      ffmpeg-path: ${MEDIA_FFMPEG_PATH:ffmpeg}
-      timeout-seconds: ${MEDIA_VALIDATION_TIMEOUT_SECONDS:120}
-
-  # 对于注解的Redis缓存数据统一设置有效期为10分钟，单位毫秒
-  cache:
-    redis:
-      time-to-live: 600000
-
-  # 配置邮件服务
+  # 配置邮件服务；未提供 SMTP 环境变量时保留为空，邮件功能会明确返回未配置
   mail:
-    # 通过环境变量配置 SMTP；默认留空，避免示例值被误认为可用配置
     host: ${MAIL_HOST:}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
@@ -47,10 +34,21 @@ media:
           starttls:
             enable: true
             required: true
-          # 邮件服务超时时间配置
           connectiontimeout: 5000
           timeout: 3000
           writetimeout: 5000
+
+media:
+  audio-validation:
+      # Full audio validation requires FFmpeg and FFprobe on PATH or configured via these environment variables.
+      ffprobe-path: ${MEDIA_FFPROBE_PATH:ffprobe}
+      ffmpeg-path: ${MEDIA_FFMPEG_PATH:ffmpeg}
+      timeout-seconds: ${MEDIA_VALIDATION_TIMEOUT_SECONDS:120}
+
+  # 对于注解的Redis缓存数据统一设置有效期为10分钟，单位毫秒
+  cache:
+    redis:
+      time-to-live: 600000
 
 # 配置 mybatis-plus
 mybatis-plus:

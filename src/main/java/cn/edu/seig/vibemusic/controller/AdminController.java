@@ -6,6 +6,8 @@ import cn.edu.seig.vibemusic.model.dto.ArtistProfileEnrichmentStatus;
 import cn.edu.seig.vibemusic.model.entity.Artist;
 import cn.edu.seig.vibemusic.model.entity.Playlist;
 import cn.edu.seig.vibemusic.model.vo.ArtistNameVO;
+import cn.edu.seig.vibemusic.model.vo.LyricImportPreviewItem;
+import cn.edu.seig.vibemusic.model.vo.LyricSongCandidate;
 import cn.edu.seig.vibemusic.model.vo.SongAdminVO;
 import cn.edu.seig.vibemusic.model.vo.UserManagementVO;
 import cn.edu.seig.vibemusic.result.PageResult;
@@ -13,6 +15,7 @@ import cn.edu.seig.vibemusic.result.Result;
 import cn.edu.seig.vibemusic.service.*;
 import cn.edu.seig.vibemusic.service.impl.AudioUploadValidationService;
 import cn.edu.seig.vibemusic.service.impl.ArtistProfileEnrichmentService;
+import cn.edu.seig.vibemusic.service.impl.LyricImportService;
 import cn.edu.seig.vibemusic.util.BindingResultUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +54,8 @@ public class AdminController {
     private ArtistProfileEnrichmentService artistProfileEnrichmentService;
     @Autowired
     private AudioUploadValidationService audioUploadValidationService;
+    @Autowired
+    private LyricImportService lyricImportService;
 
     /**
      * 注册管理员
@@ -382,6 +387,38 @@ public class AdminController {
             message += " 兼容性提示：" + validation.warning();
         }
         return Result.success(message, validation);
+    }
+
+    @PostMapping(value = "/lyrics/preview", consumes = "multipart/form-data")
+    public Result<List<LyricImportPreviewItem>> previewLyricImport(
+            @RequestParam("files") MultipartFile[] files) {
+        try {
+            return Result.success(lyricImportService.preview(files));
+        } catch (IllegalArgumentException exception) {
+            return Result.error(exception.getMessage());
+        }
+    }
+
+    @GetMapping("/lyrics/songs")
+    public Result<List<LyricSongCandidate>> searchLyricImportSongs(
+            @RequestParam("keyword") String keyword) {
+        try {
+            return Result.success(lyricImportService.searchSongs(keyword));
+        } catch (IllegalArgumentException exception) {
+            return Result.error(exception.getMessage());
+        }
+    }
+
+    @PostMapping(value = "/lyrics/import", consumes = "multipart/form-data")
+    public Result<Integer> importLyrics(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam("mappings") String mappings) {
+        try {
+            int importedCount = lyricImportService.importSelected(files, mappings);
+            return Result.success("歌词已上传到 MinIO lyrics/ 目录，并更新歌曲歌词链接。", importedCount);
+        } catch (IllegalArgumentException exception) {
+            return Result.error(exception.getMessage());
+        }
     }
 
     /**
