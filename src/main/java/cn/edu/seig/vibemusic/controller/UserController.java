@@ -126,6 +126,86 @@ public class UserController {
     }
 
     /**
+     * 上传自定义背景（壁纸）到对象存储。
+     *
+     * <p>与头像不同，壁纸是"个人偏好"类资源：服务端只负责存储并返回可访问 URL，
+     * 是否使用、如何裁剪由客户端决定（壁纸本体也支持只存在本地浏览器）。
+     *
+     * <p>为避免把对象存储当图床滥用，这里做与音频上传同级别的校验：
+     * <ul>
+     *   <li>非空校验</li>
+     *   <li>大小上限 20MB</li>
+     *   <li>允许的图片 MIME 白名单</li>
+     *   <li>魔数（文件头）与实际类型交叉校验，防止改扩展名绕过</li>
+     * </ul>
+     *
+     * @param background 背景图片
+     * @return 结果，data 为图片可访问 URL
+     */
+    @PatchMapping("/uploadUserBackground")
+    public Result uploadUserBackground(@RequestParam("background") MultipartFile background) {
+        if (background == null || background.isEmpty()) {
+            return Result.error("请选择要上传的背景图片");
+        }
+        if (background.getSize() > MAX_BACKGROUND_SIZE) {
+            return Result.error("背景图片过大，请压缩到 20MB 以内再上传");
+        }
+
+        String contentType = resolveImageContentType(background);
+        if (contentType == null) {
+            return Result.error("仅支持 JPG / PNG / WebP / GIF 格式的图片");
+        }
+
+        String url = minioService.uploadFile(background, "backgrounds", contentType);
+        return Result.success("背景上传成功", url);
+    }
+
+    /** 背景图片大小上限：20MB */
+    private static final long MAX_BACKGROUND_SIZE = 20L * 1024 * 1024;
+
+    /** 允许的图片类型 -> 期望的文件头 */
+    private static final java.util.Map<String, String[]> ALLOWED_IMAGE_TYPES = java.util.Map.of(
+            "image/jpeg", new String[]{"FFD8FF"},
+            "image/png", new String[]{"89504E47"},
+            "image/webp", new String[]{"52494646"},
+            "image/gif", new String[]{"47494638"}
+    );
+
+    /**
+     * 校验并解析图片真实类型：MIME 声明必须在白名单内，
+     * 且文件头魔数要与声明匹配，否则视为伪造类型返回 null。
+     *
+     * @param file 上传文件
+     * @return 规范化后的 Content-Type；不合法时返回 null
+     */
+    private String resolveImageContentType(MultipartFile file) {
+        String declared = file.getContentType();
+        if (declared == null || !ALLOWED_IMAGE_TYPES.containsKey(declared)) {
+            return null;
+        }
+        try (java.io.InputStream in = file.getInputStream()) {
+            byte[] head = in.readNBytes(4);
+            if (head.length < 4) {
+                return null;
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte b : head) {
+                hex.append(String.format("%02X", b));
+            }
+            String actual = hex.toString();
+            for (String magic : ALLOWED_IMAGE_TYPES.get(declared)) {
+                if (actual.startsWith(magic)) {
+                    return declared;
+                }
+            }
+            // WebP 的魔数是 RIFF....WEBP，前 4 字节为 RIFF 即可判定
+            return null;
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
+    /**
      * 更新用户密码
      *
      * @param userPasswordDTO 用户密码信息
