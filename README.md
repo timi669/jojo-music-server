@@ -16,7 +16,10 @@
 - 多对多艺人关联：支持歌曲多艺人（feat/合作）解析与搜索命中
 - 评论、收藏、反馈处理
 - 文件上传与静态资源存储（MinIO）
-- Redis 缓存与热点数据优化
+- 自定义背景上传：`PATCH /user/uploadUserBackground` 将用户壁纸存入对象存储的
+  `backgrounds/` 前缀并返回可访问 URL；校验 MIME 白名单与**文件头魔数**（防止改扩展名绕过），
+  限制 20MB，且需登录调用
+- Redis 缓存与热点数据优化（缓存 key 按用户隔离，避免收藏状态跨账号串显）
 - 邮件验证码等扩展能力
 
 ## 技术栈
@@ -102,6 +105,19 @@ $env:ARTIST_METADATA_PROXY_PORT = "10809"
 - `mvn test`：运行测试
 - `mvn package`：打包可执行 JAR
 - `mvn spring-boot:run`：启动 Spring Boot 应用
+
+## 测试与持续集成
+
+- 单元测试基于 JUnit 5 + Mockito，覆盖角色权限、缓存 key 隔离、
+  删除歌手的数据保护、音频上传校验、歌词导入、歌手资料补全、艺人署名解析等
+- 运行：`mvn test`
+
+  > ⚠️ 其中 `VibeMusicServerApplicationTests`（需真实数据源装配）与
+  > `RedisConnectionTest`（**会写入/删除真实 Redis**）依赖本机环境，
+  > 运行前请确认目标环境，避免误操作生产数据。
+
+- CI：`.github/workflows/ci.yml` 在 push / PR 到 `main` 时执行编译与
+  **离线安全的测试集**（刻意排除上述两个需真实依赖的测试类）
 
 ## 数据资源示例
 
