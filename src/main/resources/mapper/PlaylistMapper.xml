@@ -74,13 +74,16 @@
 
     <!-- 根据风格推荐歌单（排除已收藏歌单） -->
     <select id="getRecommendedPlaylistsByStyles" resultType="cn.edu.seig.vibemusic.model.vo.PlaylistVO">
-        SELECT *
-        FROM tb_playlist
-        WHERE style IN
+        SELECT
+        p.id AS playlistId,
+        p.title AS title,
+        p.cover_url AS coverUrl
+        FROM tb_playlist p
+        WHERE p.style IN
         <foreach item="style" collection="sortedStyleIds" open="(" separator="," close=")">
             #{style}
         </foreach>
-        AND id NOT IN
+        AND p.id NOT IN
         <foreach item="id" collection="favoritePlaylistIds" open="(" separator="," close=")">
             #{id}
         </foreach>
