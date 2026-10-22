@@ -108,6 +108,9 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     /**
      * 取消点赞评论
      *
+     * <p>原实现直接 likeCount - 1，在重复取消或初始为 0 时会把点赞数减成负数。
+     * 现限制下限为 0：已为 0 时视为幂等成功，不再写库。
+     *
      * @param commentId 评论ID
      * @return Result
      */
@@ -118,10 +121,12 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         if (comment == null) {
             return Result.error(MessageConstant.NOT_FOUND);
         }
-        if (comment.getLikeCount() == null) {
-            comment.setLikeCount(0L);
+        Long likeCount = comment.getLikeCount();
+        if (likeCount == null || likeCount <= 0) {
+            // 已经是 0，幂等返回成功，避免出现负数点赞
+            return Result.success(MessageConstant.SUCCESS);
         }
-        comment.setLikeCount(comment.getLikeCount() - 1);
+        comment.setLikeCount(likeCount - 1);
 
         if (commentMapper.updateById(comment) == 0) {
             return Result.error(MessageConstant.FAILED);
