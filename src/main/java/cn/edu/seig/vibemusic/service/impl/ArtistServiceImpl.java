@@ -5,11 +5,15 @@ import cn.edu.seig.vibemusic.constant.MessageConstant;
 import cn.edu.seig.vibemusic.enumeration.LikeStatusEnum;
 import cn.edu.seig.vibemusic.enumeration.RoleEnum;
 import cn.edu.seig.vibemusic.mapper.ArtistMapper;
+import cn.edu.seig.vibemusic.mapper.SongArtistMapper;
+import cn.edu.seig.vibemusic.mapper.SongMapper;
 import cn.edu.seig.vibemusic.mapper.UserFavoriteMapper;
 import cn.edu.seig.vibemusic.model.dto.ArtistAddDTO;
 import cn.edu.seig.vibemusic.model.dto.ArtistDTO;
 import cn.edu.seig.vibemusic.model.dto.ArtistUpdateDTO;
 import cn.edu.seig.vibemusic.model.entity.Artist;
+import cn.edu.seig.vibemusic.model.entity.Song;
+import cn.edu.seig.vibemusic.model.entity.SongArtist;
 import cn.edu.seig.vibemusic.model.entity.UserFavorite;
 import cn.edu.seig.vibemusic.model.vo.ArtistDetailVO;
 import cn.edu.seig.vibemusic.model.vo.ArtistNameVO;
@@ -75,6 +79,10 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
     private UserFavoriteMapper userFavoriteMapper;
     @Autowired
     private MinioService minioService;
+    @Autowired
+    private SongMapper songMapper;
+    @Autowired
+    private SongArtistMapper songArtistMapper;
 
     private void applyArtistFilters(QueryWrapper<Artist> queryWrapper, ArtistDTO artistDTO) {
         if (artistDTO.getArtistName() != null && !artistDTO.getArtistName().isBlank()) {
@@ -221,7 +229,7 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
      * @return 歌手详情
      */
     @Override
-    @Cacheable(key = "'artist-detail-v5-' + #artistId")
+    @Cacheable(key = "'artist-detail-v6-' + T(cn.edu.seig.vibemusic.util.JwtUtil).resolveCacheUserKey(#request) + '-' + #artistId")
     public Result<ArtistDetailVO> getArtistDetail(Long artistId, HttpServletRequest request) {
         ArtistDetailVO artistDetailVO = artistMapper.getArtistDetailById(artistId);
 
@@ -365,25 +373,45 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
     /**
      * 删除歌手
      *
+     * <p>安全约束（防数据静默丢失）：
+     * <ul>
+     *   <li>tb_song.artist_id 外键为 ON DELETE CASCADE，直接删歌手会连带删除其名下全部歌曲，
+     *       且这些歌曲在 MinIO 的音频/封面不会被清理，形成孤立对象。因此这里先做前置校验：
+     *       若该歌手名下仍有歌曲（作为主艺人），拒绝删除并提示先转移或删除歌曲。</li>
+     *   <li>歌手作为合作艺人（仅存在于 tb_song_artist）时，先显式删除其关联行，再删歌手。</li>
+     * </ul>
+     *
      * @param artistId 歌手id
      * @return 删除结果
      */
     @Override
-    @CacheEvict(cacheNames = "artistCache", allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {"artistCache", "songCache"}, allEntries = true)
     public Result deleteArtist(Long artistId) {
-        // 1. 查询歌手信息，获取头像 URL
+        // 1. 查询歌手信息
         Artist artist = artistMapper.selectById(artistId);
         if (artist == null) {
             return Result.error(MessageConstant.ARTIST + MessageConstant.NOT_FOUND);
         }
-        String avatarUrl = artist.getAvatar();
 
-        // 2. 先删除 MinIO 里的头像文件
+        // 2. 前置校验：名下仍有歌曲则拒绝（避免 CASCADE 连带删除歌曲及其 MinIO 资源变成孤儿）
+        Long songCount = songMapper.selectCount(
+                new QueryWrapper<Song>().eq("artist_id", artistId));
+        if (songCount != null && songCount > 0) {
+            return Result.error("该歌手名下仍有 " + songCount
+                    + " 首歌曲，删除会连带删除这些歌曲且无法恢复。请先删除或改派歌曲所属歌手后再试。");
+        }
+
+        // 3. 先清理该歌手的合作艺人关联（tb_song_artist），避免依赖外键级联
+        songArtistMapper.delete(new QueryWrapper<SongArtist>().eq("artist_id", artistId));
+
+        // 4. 删除 MinIO 头像
+        String avatarUrl = artist.getAvatar();
         if (avatarUrl != null && !avatarUrl.isEmpty()) {
             minioService.deleteFile(avatarUrl);
         }
 
-        // 3. 删除数据库中的歌手信息
+        // 5. 删除歌手记录
         if (artistMapper.deleteById(artistId) == 0) {
             return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
         }
@@ -394,25 +422,43 @@ public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> impleme
     /**
      * 批量删除歌手
      *
+     * <p>与单条删除一致：任一歌手名下仍有歌曲则整批拒绝，避免级联删除歌曲造成数据丢失。
+     *
      * @param artistIds 歌手id列表
      * @return 删除结果
      */
     @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     @CacheEvict(cacheNames = {"artistCache", "songCache"}, allEntries = true)
     public Result deleteArtists(List<Long> artistIds) {
-        // 1. 查询歌手信息，获取头像 URL 列表
+        if (artistIds == null || artistIds.isEmpty()) {
+            return Result.error("请选择要删除的歌手");
+        }
+
+        // 1. 前置校验：任一名下有歌曲则整批拒绝
+        Long songCount = songMapper.selectCount(
+                new QueryWrapper<Song>().in("artist_id", artistIds));
+        if (songCount != null && songCount > 0) {
+            return Result.error("所选歌手中名下仍有 " + songCount
+                    + " 首歌曲，删除会连带删除这些歌曲且无法恢复。请先删除或改派歌曲所属歌手后再试。");
+        }
+
+        // 2. 查询歌手信息，获取头像 URL 列表
         List<Artist> artists = artistMapper.selectByIds(artistIds);
         List<String> avatarUrlList = artists.stream()
                 .map(Artist::getAvatar)
                 .filter(avatarUrl -> avatarUrl != null && !avatarUrl.isEmpty())
                 .toList();
 
-        // 2. 先删除 MinIO 里的头像文件
+        // 3. 先清理合作艺人关联
+        songArtistMapper.delete(new QueryWrapper<SongArtist>().in("artist_id", artistIds));
+
+        // 4. 删除 MinIO 头像
         for (String avatarUrl : avatarUrlList) {
             minioService.deleteFile(avatarUrl);
         }
 
-        // 3. 删除数据库中的歌手信息
+        // 5. 删除歌手记录
         if (artistMapper.deleteByIds(artistIds) == 0) {
             return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
         }
