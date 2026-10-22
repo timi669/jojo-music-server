@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Compile / Test (safe suite)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Make wrapper executable
+        run: chmod +x mvnw
+
+      - name: Compile
+        run: ./mvnw -B -o compile || ./mvnw -B compile
+
+      # 只运行"离线安全"的测试类。
+      # VibeMusicServerApplicationTests 需要真实数据源装配，
+      # RedisConnectionTest 会写入/删除真实 Redis，二者均不纳入 CI。
+      - name: Run safe test suite
+        run: |
+          ./mvnw -B test -DfailIfNoTests=false \
+            -Dtest=RolePermissionManagerTest,SongMapperFavoriteQueryTest,SongMapperLyricImportQueryTest,ArtistServiceImplTest,ArtistServiceImplDeleteGuardTest,AudioUploadValidationServiceTest,EmailServiceImplTest,LyricImportServiceTest,UserServiceVerificationCodeTest,WikimediaArtistMetadataProviderTest,AudioArtistCreditResolverTest,SongArtistDisplayResolverTest,JwtUtilResolveCacheUserKeyTest
