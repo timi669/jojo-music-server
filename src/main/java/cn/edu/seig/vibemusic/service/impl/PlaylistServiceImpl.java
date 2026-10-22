@@ -202,7 +202,7 @@ public class PlaylistServiceImpl extends ServiceImpl<PlaylistMapper, Playlist> i
      * @return 歌单详情
      */
     @Override
-    @Cacheable(key = "'playlist-detail-v2-' + #playlistId")
+    @Cacheable(key = "'playlist-detail-v3-' + T(cn.edu.seig.vibemusic.util.JwtUtil).resolveCacheUserKey(#request) + '-' + #playlistId")
     public Result<PlaylistDetailVO> getPlaylistDetail(Long playlistId, HttpServletRequest request) {
         PlaylistDetailVO playlistDetailVO = playlistMapper.getPlaylistDetailById(playlistId);
 

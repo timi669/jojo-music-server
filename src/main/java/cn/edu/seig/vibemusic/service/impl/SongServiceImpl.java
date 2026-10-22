@@ -79,7 +79,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 歌曲列表
      */
     @Override
-    @Cacheable(key = "'song-credit-v3-' + #songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.keyword + '-' + #songDTO.songName + '-' + #songDTO.artistName + '-' + #songDTO.album")
+    @Cacheable(key = "'song-credit-v4-' + T(cn.edu.seig.vibemusic.util.JwtUtil).resolveCacheUserKey(#request) + '-' + #songDTO.pageNum + '-' + #songDTO.pageSize + '-' + #songDTO.keyword + '-' + #songDTO.songName + '-' + #songDTO.artistName + '-' + #songDTO.album")
     public Result<PageResult<SongVO>> getAllSongs(SongDTO songDTO, HttpServletRequest request) {
         // 获取请求头中的 token
         String token = request.getHeader("Authorization");
@@ -262,7 +262,7 @@ public class SongServiceImpl extends ServiceImpl<SongMapper, Song> implements IS
      * @return 歌曲详情
      */
     @Override
-    @Cacheable(key = "'song-detail-v3-' + #songId")
+    @Cacheable(key = "'song-detail-v4-' + T(cn.edu.seig.vibemusic.util.JwtUtil).resolveCacheUserKey(#request) + '-' + #songId")
     public Result<SongDetailVO> getSongDetail(Long songId, HttpServletRequest request) {
         SongDetailVO songDetailVO = songMapper.getSongDetailById(songId);
 
