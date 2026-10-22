@@ -5,8 +5,10 @@ import cn.edu.seig.vibemusic.constant.JwtClaimsConstant;
 import cn.edu.seig.vibemusic.constant.MessageConstant;
 import cn.edu.seig.vibemusic.enumeration.RoleEnum;
 import cn.edu.seig.vibemusic.enumeration.UserStatusEnum;
+import cn.edu.seig.vibemusic.mapper.FeedbackMapper;
 import cn.edu.seig.vibemusic.mapper.UserMapper;
 import cn.edu.seig.vibemusic.model.dto.*;
+import cn.edu.seig.vibemusic.model.entity.Feedback;
 import cn.edu.seig.vibemusic.model.entity.User;
 import cn.edu.seig.vibemusic.model.vo.UserManagementVO;
 import cn.edu.seig.vibemusic.model.vo.UserVO;
@@ -58,6 +60,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private EmailService emailService;
     @Autowired
     private MinioService minioService;
+    @Autowired
+    private FeedbackMapper feedbackMapper;
 
     /**
      * 发送验证码
@@ -282,6 +286,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     /**
      * 重置用户密码
      *
+     * <p>注意：验证码的校验与消费在 Controller 中完成（verifyVerificationCode 通过后才调用本方法）。
+     * 原实现在方法开头就删除验证码，导致"校验通过但后续失败（如两次密码不一致）"时
+     * 验证码已被烧掉，用户必须重新发码。现改为仅在校验成功、密码真正更新后再删除验证码。
+     *
      * @param userResetPasswordDTO 用户密码信息
      * @return 结果
      */
@@ -289,15 +297,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     public Result resetUserPassword(UserResetPasswordDTO userResetPasswordDTO) {
         String email = normalizeEmail(userResetPasswordDTO.getEmail());
 
-        // 删除Redis中的验证码
-        stringRedisTemplate.delete("verificationCode:" + email);
-
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", email));
         if (user == null) {
             return Result.error(MessageConstant.EMAIL + MessageConstant.NOT_EXIST);
         }
 
         if (!userResetPasswordDTO.getRepeatPassword().equals(userResetPasswordDTO.getNewPassword())) {
+            // 参数不合法，直接返回，不清除验证码，允许用户在有效期内重试
             return Result.error(MessageConstant.PASSWORD_NOT_MATCH);
         }
 
@@ -305,6 +311,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 new QueryWrapper<User>().eq("id", user.getUserId())) == 0) {
             return Result.error(MessageConstant.PASSWORD + MessageConstant.RESET + MessageConstant.FAILED);
         }
+
+        // 密码更新成功后才消费验证码
+        stringRedisTemplate.delete("verificationCode:" + email);
 
         return Result.success(MessageConstant.PASSWORD + MessageConstant.RESET + MessageConstant.SUCCESS);
     }
@@ -334,10 +343,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     /**
      * 注销账户
      *
+     * <p>tb_feedback.user_id 外键为 ON DELETE RESTRICT，用户只要提交过反馈，
+     * 删除用户就会抛 SQLIntegrityConstraintViolationException，最终被前端显示为"未知错误"。
+     * 注销语义本身就是"清除该用户全部数据"，因此这里先显式删除其反馈记录，再删用户。
+     *
      * @return 结果
      */
     @Override
-    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    @CacheEvict(cacheNames = {"userCache", "feedbackCache"}, allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public Result deleteAccount() {
         Map<String, Object> map = ThreadLocalUtil.get();
         Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
@@ -348,6 +362,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         if (user == null) {
             return Result.error(MessageConstant.USER + MessageConstant.NOT_EXIST);
         }
+
+        // 先清理 RESTRICT 外键依赖的反馈记录，避免删除失败
+        feedbackMapper.delete(new QueryWrapper<Feedback>().eq("user_id", userId));
 
         // 删除头像
         String userAvatar = user.getUserAvatar();
@@ -534,12 +551,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     /**
      * 删除用户
      *
+     * <p>tb_feedback.user_id 为 ON DELETE RESTRICT，需先清理该用户的反馈记录，
+     * 否则删除会抛外键异常，前端只看到"未知错误"。
+     *
      * @param userId 用户id
      * @return 结果
      */
     @Override
-    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    @CacheEvict(cacheNames = {"userCache", "feedbackCache"}, allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public Result deleteUser(Long userId) {
+        feedbackMapper.delete(new QueryWrapper<Feedback>().eq("user_id", userId));
         if (userMapper.deleteById(userId) == 0) {
             return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
         }
@@ -553,8 +575,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      * @return 结果
      */
     @Override
-    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    @CacheEvict(cacheNames = {"userCache", "feedbackCache"}, allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public Result deleteUsers(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Result.error("请选择要删除的用户");
+        }
+        feedbackMapper.delete(new QueryWrapper<Feedback>().in("user_id", userIds));
         if (userMapper.deleteByIds(userIds) == 0) {
             return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
         }
