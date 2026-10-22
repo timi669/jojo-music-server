@@ -14,12 +14,12 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 登录接口和注册接口不拦截
+        // 登录/登出接口不拦截；/admin/register 不再放行，须由已登录管理员调用（防止匿名创建管理员）
         registry.addInterceptor(loginInterceptor)
                 .addPathPatterns("/**") // 拦截所有请求
                 .excludePathPatterns(
                         "/error",
-                        "/admin/login", "/admin/logout", "/admin/register",
+                        "/admin/login", "/admin/logout",
                         "/user/login", "/user/logout", "/user/register",
                         "/user/sendVerificationCode", "/user/resetUserPassword",
                         "/banner/getBannerList",
