@@ -25,6 +25,7 @@
             <result column="content" property="content"/>
             <result column="createTime" property="createTime"/>
             <result column="likeCount" property="likeCount"/>
+            <result column="dislikeCount" property="dislikeCount"/>
         </collection>
     </resultMap>
 
@@ -51,6 +52,7 @@
                c.content      AS content,
                c.create_time  AS createTime,
                c.like_count   AS likeCount,
+               c.dislike_count AS dislikeCount,
                u.username     AS username,
                u.user_avatar  AS userAvatar
         FROM tb_playlist p

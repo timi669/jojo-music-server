@@ -80,4 +80,10 @@ public class Comment implements Serializable {
     @TableField("like_count")
     private Long likeCount;
 
+    /**
+     * 倒赞（点踩）数量
+     */
+    @TableField("dislike_count")
+    private Long dislikeCount;
+
 }
