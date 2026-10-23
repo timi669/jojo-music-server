@@ -101,6 +101,17 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!--
+            密码哈希（BCrypt）。
+            只引 spring-security-crypto，而不是 spring-boot-starter-security：
+            前者是纯粹的加密工具库，不会启用 Spring Security 的过滤器链与默认登录页，
+            因此不需要改动现有基于拦截器的鉴权体系。
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
         <!--jwt依赖-->
         <dependency>
             <groupId>com.auth0</groupId>

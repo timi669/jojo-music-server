@@ -8,13 +8,13 @@ import cn.edu.seig.vibemusic.model.dto.AdminDTO;
 import cn.edu.seig.vibemusic.model.entity.Admin;
 import cn.edu.seig.vibemusic.result.Result;
 import cn.edu.seig.vibemusic.service.IAdminService;
+import cn.edu.seig.vibemusic.util.PasswordEncoderUtil;
 import cn.edu.seig.vibemusic.util.JwtUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +35,11 @@ public class AdminServiceImpl extends ServiceImpl<AdminMapper, Admin> implements
     private AdminMapper adminMapper;
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+    /**
+     * 密码哈希工具：新密码走 BCrypt，同时兼容历史 MD5 密文并在登录时自动升级。
+     */
+    @Autowired
+    private PasswordEncoderUtil passwordEncoderUtil;
 
     /**
      * 管理员注册
@@ -49,9 +54,10 @@ public class AdminServiceImpl extends ServiceImpl<AdminMapper, Admin> implements
             return Result.error(MessageConstant.USERNAME + MessageConstant.ALREADY_EXISTS);
         }
 
-        String passwordMD5 = DigestUtils.md5DigestAsHex(adminDTO.getPassword().getBytes());
+        // 新注册一律使用 BCrypt（自带随机盐），不再使用可被彩虹表还原的裸 MD5
         Admin adminRegister = new Admin();
-        adminRegister.setUsername(adminDTO.getUsername()).setPassword(passwordMD5);
+        adminRegister.setUsername(adminDTO.getUsername())
+                .setPassword(passwordEncoderUtil.encode(adminDTO.getPassword()));
 
         if (adminMapper.insert(adminRegister) == 0) {
             return Result.error(MessageConstant.REGISTER + MessageConstant.FAILED);
@@ -72,7 +78,21 @@ public class AdminServiceImpl extends ServiceImpl<AdminMapper, Admin> implements
             return Result.error(MessageConstant.USERNAME + MessageConstant.ERROR);
         }
 
-        if (DigestUtils.md5DigestAsHex(adminDTO.getPassword().getBytes()).equals(admin.getPassword())) {
+        if (passwordEncoderUtil.matches(adminDTO.getPassword(), admin.getPassword())) {
+            /*
+             * 历史密码自动升级：管理员账号通常是早期用 MD5 建的，
+             * 在"刚验证过明文密码"的此刻改写为 BCrypt。
+             */
+            if (passwordEncoderUtil.needsUpgrade(admin.getPassword())) {
+                try {
+                    adminMapper.updateById(new Admin()
+                            .setAdminId(admin.getAdminId())
+                            .setPassword(passwordEncoderUtil.encode(adminDTO.getPassword())));
+                } catch (Exception ignored) {
+                    // 升级失败不影响本次登录；下次登录会再尝试
+                }
+            }
+
             // 登录成功
             Map<String, Object> claims = new HashMap<>();
             claims.put(JwtClaimsConstant.ROLE, RoleEnum.ADMIN.getRole());
