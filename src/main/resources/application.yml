@@ -50,6 +50,21 @@ media:
     redis:
       time-to-live: 600000
 
+# 应用级安全配置
+app:
+  jwt:
+    # JWT 签名密钥。**生产环境必须通过环境变量 APP_JWT_SECRET 显式设置**。
+    # 留空时后端会回退到开发用默认值并在启动日志中告警。
+    # 硬编码弱密钥的风险：任何拿到源码/仓库的人都能伪造管理员 token，
+    # 从而绕过全部登录流程。
+    secret: ${APP_JWT_SECRET:}
+
+  cors:
+    # 允许跨域访问的来源（逗号分隔，需完整包含协议与端口）。
+    # 默认只放行本地开发端口；部署到其他域名时必须显式追加，
+    # 不要改回通配符 "*"。
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:8090,http://localhost:8089}
+
 # 配置 mybatis-plus
 mybatis-plus:
   type-aliases-package: cn.edu.seig.pojo # 实体类所在的包，允许用实体类类名作为别名

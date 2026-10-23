@@ -17,6 +17,7 @@ import cn.edu.seig.vibemusic.result.Result;
 import cn.edu.seig.vibemusic.service.EmailService;
 import cn.edu.seig.vibemusic.service.IUserService;
 import cn.edu.seig.vibemusic.service.MinioService;
+import cn.edu.seig.vibemusic.util.PasswordEncoderUtil;
 import cn.edu.seig.vibemusic.util.JwtUtil;
 import cn.edu.seig.vibemusic.util.ThreadLocalUtil;
 import cn.edu.seig.vibemusic.util.TypeConversionUtil;
@@ -31,7 +32,6 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -62,6 +62,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private MinioService minioService;
     @Autowired
     private FeedbackMapper feedbackMapper;
+    /**
+     * 密码哈希工具：新密码走 BCrypt，同时兼容历史 MD5 密文并在登录时自动升级。
+     */
+    @Autowired
+    private PasswordEncoderUtil passwordEncoderUtil;
 
     /**
      * 发送验证码
@@ -119,9 +124,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.error(MessageConstant.EMAIL + MessageConstant.ALREADY_EXISTS);
         }
 
-        String passwordMD5 = DigestUtils.md5DigestAsHex(userRegisterDTO.getPassword().getBytes());
+        // 新注册一律使用 BCrypt（自带随机盐），不再使用可被彩虹表还原的裸 MD5
+        String passwordHash = passwordEncoderUtil.encode(userRegisterDTO.getPassword());
         User user = new User();
-        user.setUsername(userRegisterDTO.getUsername()).setPassword(passwordMD5).setEmail(email)
+        user.setUsername(userRegisterDTO.getUsername()).setPassword(passwordHash).setEmail(email)
                 .setCreateTime(LocalDateTime.now()).setUpdateTime(LocalDateTime.now())
                 .setUserStatus(UserStatusEnum.ENABLE);
 
@@ -148,7 +154,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.error(MessageConstant.ACCOUNT_LOCKED);
         }
 
-        if (DigestUtils.md5DigestAsHex(userLoginDTO.getPassword().getBytes()).equals(user.getPassword())) {
+        if (passwordEncoderUtil.matches(userLoginDTO.getPassword(), user.getPassword())) {
+            /*
+             * 历史密码自动升级：若该用户仍是旧的 MD5 密文，在这一次
+             * "刚刚验证过明文密码"的时机把它改写为 BCrypt。
+             * 这是唯一能安全完成迁移的时刻 —— 之后手上就没有明文了。
+             * 升级失败（如库写入异常）不应阻断登录，因此单独吞掉异常。
+             */
+            if (passwordEncoderUtil.needsUpgrade(user.getPassword())) {
+                try {
+                    // 只更新密码字段，用 id 条件定位（setUserId 仅是实体字段，不作条件）
+                    userMapper.update(null,
+                            new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<User>()
+                                    .eq("id", user.getUserId())
+                                    .set("password", passwordEncoderUtil.encode(userLoginDTO.getPassword()))
+                                    .set("update_time", LocalDateTime.now()));
+                } catch (Exception ignored) {
+                    // 升级失败不影响本次登录；下次登录会再尝试
+                }
+            }
+
             // 登录成功
             Map<String, Object> claims = new HashMap<>();
             claims.put(JwtClaimsConstant.ROLE, RoleEnum.USER.getRole());
@@ -260,11 +285,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
         Long userId = TypeConversionUtil.toLong(userIdObj);
         User user = userMapper.selectById(userId);
-        if (!user.getPassword().equals(DigestUtils.md5DigestAsHex(userPasswordDTO.getOldPassword().getBytes()))) {
+        // 旧密码校验：兼容历史 MD5 密文
+        if (!passwordEncoderUtil.matches(userPasswordDTO.getOldPassword(), user.getPassword())) {
             return Result.error(MessageConstant.OLD_PASSWORD_ERROR);
         }
 
-        if (user.getPassword().equals(DigestUtils.md5DigestAsHex(userPasswordDTO.getNewPassword().getBytes()))) {
+        /*
+         * 新密码不得与旧密码相同。
+         * 这里必须用 matches(明文, 库中密文) 判断，而不能像旧实现那样
+         * 拿"新密码的摘要"去比对库中密文 —— BCrypt 带随机盐，
+         * 同一个密码两次加密结果不同，摘要比较会永远不相等、
+         * 从而让这条校验形同虚设。
+         */
+        if (passwordEncoderUtil.matches(userPasswordDTO.getNewPassword(), user.getPassword())) {
             return Result.error(MessageConstant.NEW_PASSWORD_ERROR);
         }
 
@@ -272,7 +305,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.error(MessageConstant.PASSWORD_NOT_MATCH);
         }
 
-        if (userMapper.update(new User().setPassword(DigestUtils.md5DigestAsHex(userPasswordDTO.getNewPassword().getBytes())).setUpdateTime(LocalDateTime.now()),
+        // 新密码一律以 BCrypt 存储
+        if (userMapper.update(new User().setPassword(passwordEncoderUtil.encode(userPasswordDTO.getNewPassword())).setUpdateTime(LocalDateTime.now()),
                 new QueryWrapper<User>().eq("id", userId)) == 0) {
             return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
         }
@@ -307,7 +341,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.error(MessageConstant.PASSWORD_NOT_MATCH);
         }
 
-        if (userMapper.update(new User().setPassword(DigestUtils.md5DigestAsHex(userResetPasswordDTO.getNewPassword().getBytes())).setUpdateTime(LocalDateTime.now()),
+        // 重置后同样以 BCrypt 存储
+        if (userMapper.update(new User().setPassword(passwordEncoderUtil.encode(userResetPasswordDTO.getNewPassword())).setUpdateTime(LocalDateTime.now()),
                 new QueryWrapper<User>().eq("id", user.getUserId())) == 0) {
             return Result.error(MessageConstant.PASSWORD + MessageConstant.RESET + MessageConstant.FAILED);
         }
@@ -462,9 +497,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             }
         }
 
-        String passwordMD5 = DigestUtils.md5DigestAsHex(userAddDTO.getPassword().getBytes());
+        String passwordHash = passwordEncoderUtil.encode(userAddDTO.getPassword());
         User user = new User();
-        user.setUsername(userAddDTO.getUsername()).setPassword(passwordMD5).setPhone(userAddDTO.getPhone())
+        user.setUsername(userAddDTO.getUsername()).setPassword(passwordHash).setPhone(userAddDTO.getPhone())
                 .setEmail(userAddDTO.getEmail()).setIntroduction(userAddDTO.getIntroduction())
                 .setCreateTime(LocalDateTime.now()).setUpdateTime(LocalDateTime.now());
 
