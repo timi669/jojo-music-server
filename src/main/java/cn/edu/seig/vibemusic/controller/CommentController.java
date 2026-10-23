@@ -68,6 +68,28 @@ public class CommentController {
     }
 
     /**
+     * 倒赞（点踩）评论
+     *
+     * @param commentId 评论id
+     * @return 结果
+     */
+    @PatchMapping("/dislikeComment/{id}")
+    public Result dislikeComment(@PathVariable("id") Long commentId) {
+        return commentService.dislikeComment(commentId);
+    }
+
+    /**
+     * 取消倒赞评论
+     *
+     * @param commentId 评论id
+     * @return 结果
+     */
+    @PatchMapping("/cancelDislikeComment/{id}")
+    public Result cancelDislikeComment(@PathVariable("id") Long commentId) {
+        return commentService.cancelDislikeComment(commentId);
+    }
+
+    /**
      * 删除评论
      *
      * @param commentId 评论id

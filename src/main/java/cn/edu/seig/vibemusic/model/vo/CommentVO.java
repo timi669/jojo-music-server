@@ -44,4 +44,9 @@ public class CommentVO implements Serializable {
      */
     private Long likeCount;
 
+    /**
+     * 倒赞（点踩）数量
+     */
+    private Long dislikeCount;
+
 }

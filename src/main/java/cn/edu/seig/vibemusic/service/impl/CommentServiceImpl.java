@@ -49,7 +49,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         Comment comment = new Comment();
         comment.setUserId(userId).setSongId(commentSongDTO.getSongId())
                 .setContent(commentSongDTO.getContent()).setType(0)
-                .setCreateTime(LocalDateTime.now()).setLikeCount(0L);
+                .setCreateTime(LocalDateTime.now()).setLikeCount(0L).setDislikeCount(0L);
 
         if (commentMapper.insert(comment) == 0) {
             return Result.error(MessageConstant.ADD + MessageConstant.FAILED);
@@ -73,7 +73,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         Comment comment = new Comment();
         comment.setUserId(userId).setPlaylistId(commentPlaylistDTO.getPlaylistId())
                 .setContent(commentPlaylistDTO.getContent()).setType(1)
-                .setCreateTime(LocalDateTime.now()).setLikeCount(0L);
+                .setCreateTime(LocalDateTime.now()).setLikeCount(0L).setDislikeCount(0L);
 
         if (commentMapper.insert(comment) == 0) {
             return Result.error(MessageConstant.ADD + MessageConstant.FAILED);
@@ -95,6 +95,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             return Result.error(MessageConstant.NOT_FOUND);
         }
         if (comment.getLikeCount() == null) {
+            // 只兜底 likeCount；不要在这里顺手动 dislikeCount，
+            // 否则会把该评论已有的倒赞数抹成 0
             comment.setLikeCount(0L);
         }
         comment.setLikeCount(comment.getLikeCount() + 1);
@@ -127,6 +129,62 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             return Result.success(MessageConstant.SUCCESS);
         }
         comment.setLikeCount(likeCount - 1);
+
+        if (commentMapper.updateById(comment) == 0) {
+            return Result.error(MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 倒赞（点踩）评论。
+     *
+     * <p>与点赞逻辑对称：计数量 +1。计数字段为历史遗留的 {@code Long}，
+     * 可能为 null，因此先兜底为 0 再加。
+     *
+     * @param commentId 评论ID
+     * @return Result
+     */
+    @Override
+    @CacheEvict(cacheNames = {"songCache", "playlistCache"}, allEntries = true)
+    public Result dislikeComment(Long commentId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            return Result.error(MessageConstant.NOT_FOUND);
+        }
+        if (comment.getDislikeCount() == null) {
+            comment.setDislikeCount(0L);
+        }
+        comment.setDislikeCount(comment.getDislikeCount() + 1);
+
+        if (commentMapper.updateById(comment) == 0) {
+            return Result.error(MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 取消倒赞评论。
+     *
+     * <p>与 cancelLikeComment 一致，下限钳制为 0：
+     * 已为 0 时视为幂等成功、不写库，避免倒赞数被减成负数。
+     *
+     * @param commentId 评论ID
+     * @return Result
+     */
+    @Override
+    @CacheEvict(cacheNames = {"songCache", "playlistCache"}, allEntries = true)
+    public Result cancelDislikeComment(Long commentId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            return Result.error(MessageConstant.NOT_FOUND);
+        }
+        Long dislikeCount = comment.getDislikeCount();
+        if (dislikeCount == null || dislikeCount <= 0) {
+            // 已经是 0，幂等返回成功
+            return Result.success(MessageConstant.SUCCESS);
+        }
+        comment.setDislikeCount(dislikeCount - 1);
 
         if (commentMapper.updateById(comment) == 0) {
             return Result.error(MessageConstant.FAILED);

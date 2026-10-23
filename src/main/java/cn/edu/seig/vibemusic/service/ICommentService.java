@@ -28,6 +28,12 @@ public interface ICommentService extends IService<Comment> {
     // 取消点赞评论
     Result cancelLikeComment(Long commentId);
 
+    // 倒赞（点踩）评论
+    Result dislikeComment(Long commentId);
+
+    // 取消倒赞评论
+    Result cancelDislikeComment(Long commentId);
+
     // 删除评论
     Result deleteComment(Long commentId);
 
