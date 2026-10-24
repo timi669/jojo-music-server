@@ -146,6 +146,25 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!--
+                显式声明 Lombok 注解处理器。
+                从 JDK 23 起，编译器不再自动执行 classpath 上的注解处理器（默认 -proc:none），
+                升级到 Java 25 后若不声明，@Data 等注解不会生成 getter/setter，
+                编译会报大量“找不到符号”而看不出真正原因。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

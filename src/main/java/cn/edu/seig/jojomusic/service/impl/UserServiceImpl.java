@@ -1,0 +1,626 @@
+package cn.edu.seig.jojomusic.service.impl;
+
+
+import cn.edu.seig.jojomusic.constant.JwtClaimsConstant;
+import cn.edu.seig.jojomusic.constant.MessageConstant;
+import cn.edu.seig.jojomusic.enumeration.RoleEnum;
+import cn.edu.seig.jojomusic.enumeration.UserStatusEnum;
+import cn.edu.seig.jojomusic.mapper.FeedbackMapper;
+import cn.edu.seig.jojomusic.mapper.UserMapper;
+import cn.edu.seig.jojomusic.model.dto.*;
+import cn.edu.seig.jojomusic.model.entity.Feedback;
+import cn.edu.seig.jojomusic.model.entity.User;
+import cn.edu.seig.jojomusic.model.vo.UserManagementVO;
+import cn.edu.seig.jojomusic.model.vo.UserVO;
+import cn.edu.seig.jojomusic.result.PageResult;
+import cn.edu.seig.jojomusic.result.Result;
+import cn.edu.seig.jojomusic.service.EmailService;
+import cn.edu.seig.jojomusic.service.IUserService;
+import cn.edu.seig.jojomusic.service.MinioService;
+import cn.edu.seig.jojomusic.util.PasswordEncoderUtil;
+import cn.edu.seig.jojomusic.util.JwtUtil;
+import cn.edu.seig.jojomusic.util.ThreadLocalUtil;
+import cn.edu.seig.jojomusic.util.TypeConversionUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * <p>
+ * 服务实现类
+ * </p>
+ *
+ * @author timi669
+ * @since 2025-01-09
+ */
+@Service
+@CacheConfig(cacheNames = "userCache")
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
+
+    @Autowired
+    private UserMapper userMapper;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+    @Autowired
+    private EmailService emailService;
+    @Autowired
+    private MinioService minioService;
+    @Autowired
+    private FeedbackMapper feedbackMapper;
+    /**
+     * 密码哈希工具：新密码走 BCrypt，同时兼容历史 MD5 密文并在登录时自动升级。
+     */
+    @Autowired
+    private PasswordEncoderUtil passwordEncoderUtil;
+
+    /**
+     * 发送验证码
+     *
+     * @param email 用户邮箱
+     * @return 结果
+     */
+    @Override
+    public Result sendVerificationCode(String email) {
+        String normalizedEmail = normalizeEmail(email);
+        String verificationCode = emailService.sendVerificationCodeEmail(normalizedEmail);
+        if (verificationCode == null) {
+            return Result.error(MessageConstant.EMAIL_SEND_FAILED);
+        }
+
+        // 将验证码存储到Redis中，设置过期时间为5分钟
+        stringRedisTemplate.opsForValue().set("verificationCode:" + normalizedEmail, verificationCode, 5, TimeUnit.MINUTES);
+        return Result.success(MessageConstant.EMAIL_SEND_SUCCESS);
+    }
+
+    /**
+     * 验证验证码
+     *
+     * @param email            用户邮箱
+     * @param verificationCode 验证码
+     * @return 验证结果
+     */
+    @Override
+    public boolean verifyVerificationCode(String email, String verificationCode) {
+        if (verificationCode == null) {
+            return false;
+        }
+        String storedCode = stringRedisTemplate.opsForValue().get("verificationCode:" + normalizeEmail(email));
+        return storedCode != null && storedCode.equalsIgnoreCase(verificationCode.trim());
+    }
+
+    /**
+     * 用户注册
+     *
+     * @param userRegisterDTO 用户注册信息
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    public Result register(UserRegisterDTO userRegisterDTO) {
+        String email = normalizeEmail(userRegisterDTO.getEmail());
+
+        User userByUsername = userMapper.selectOne(new QueryWrapper<User>().eq("username", userRegisterDTO.getUsername()));
+        if (userByUsername != null) {
+            return Result.error(MessageConstant.USERNAME + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User userByEmail = userMapper.selectOne(new QueryWrapper<User>().eq("email", email));
+        if (userByEmail != null) {
+            return Result.error(MessageConstant.EMAIL + MessageConstant.ALREADY_EXISTS);
+        }
+
+        // 新注册一律使用 BCrypt（自带随机盐），不再使用可被彩虹表还原的裸 MD5
+        String passwordHash = passwordEncoderUtil.encode(userRegisterDTO.getPassword());
+        User user = new User();
+        user.setUsername(userRegisterDTO.getUsername()).setPassword(passwordHash).setEmail(email)
+                .setCreateTime(LocalDateTime.now()).setUpdateTime(LocalDateTime.now())
+                .setUserStatus(UserStatusEnum.ENABLE);
+
+        if (userMapper.insert(user) == 0) {
+            return Result.error(MessageConstant.REGISTER + MessageConstant.FAILED);
+        }
+        stringRedisTemplate.delete("verificationCode:" + email);
+        return Result.success(MessageConstant.REGISTER + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 用户登录
+     *
+     * @param userLoginDTO 用户登录信息
+     * @return 结果
+     */
+    @Override
+    public Result login(UserLoginDTO userLoginDTO) {
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", userLoginDTO.getEmail()));
+        if (user == null) {
+            return Result.error(MessageConstant.EMAIL + MessageConstant.ERROR);
+        }
+        if (user.getUserStatus() != UserStatusEnum.ENABLE) {
+            return Result.error(MessageConstant.ACCOUNT_LOCKED);
+        }
+
+        if (passwordEncoderUtil.matches(userLoginDTO.getPassword(), user.getPassword())) {
+            /*
+             * 历史密码自动升级：若该用户仍是旧的 MD5 密文，在这一次
+             * "刚刚验证过明文密码"的时机把它改写为 BCrypt。
+             * 这是唯一能安全完成迁移的时刻 —— 之后手上就没有明文了。
+             * 升级失败（如库写入异常）不应阻断登录，因此单独吞掉异常。
+             */
+            if (passwordEncoderUtil.needsUpgrade(user.getPassword())) {
+                try {
+                    // 只更新密码字段，用 id 条件定位（setUserId 仅是实体字段，不作条件）
+                    userMapper.update(null,
+                            new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<User>()
+                                    .eq("id", user.getUserId())
+                                    .set("password", passwordEncoderUtil.encode(userLoginDTO.getPassword()))
+                                    .set("update_time", LocalDateTime.now()));
+                } catch (Exception ignored) {
+                    // 升级失败不影响本次登录；下次登录会再尝试
+                }
+            }
+
+            // 登录成功
+            Map<String, Object> claims = new HashMap<>();
+            claims.put(JwtClaimsConstant.ROLE, RoleEnum.USER.getRole());
+            claims.put(JwtClaimsConstant.USER_ID, user.getUserId());
+            claims.put(JwtClaimsConstant.USERNAME, user.getUsername());
+            claims.put(JwtClaimsConstant.EMAIL, user.getEmail());
+            String token = JwtUtil.generateToken(claims);
+
+            // 将token存入redis
+            stringRedisTemplate.opsForValue().set(token, token, 6, TimeUnit.HOURS);
+
+            return Result.success(MessageConstant.LOGIN + MessageConstant.SUCCESS, token);
+        }
+
+        return Result.error(MessageConstant.PASSWORD + MessageConstant.ERROR);
+    }
+
+    /**
+     * 用户信息
+     *
+     * @return 结果
+     */
+    @Override
+    public Result<UserVO> userInfo() {
+        Map<String, Object> map = ThreadLocalUtil.get();
+        Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
+        Long userId = TypeConversionUtil.toLong(userIdObj);
+        User user = userMapper.selectById(userId);
+        UserVO userVO = new UserVO();
+        BeanUtils.copyProperties(user, userVO);
+
+        return Result.success(userVO);
+    }
+
+    /**
+     * 更新用户信息
+     *
+     * @param userDTO 用户信息
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    public Result updateUserInfo(UserDTO userDTO) {
+        Map<String, Object> map = ThreadLocalUtil.get();
+        Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
+        Long userId = TypeConversionUtil.toLong(userIdObj);
+
+        User userByUsername = userMapper.selectOne(new QueryWrapper<User>().eq("username", userDTO.getUsername()));
+        if (userByUsername != null && !userByUsername.getUserId().equals(userId)) {
+            return Result.error(MessageConstant.USERNAME + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User userByPhone = userMapper.selectOne(new QueryWrapper<User>().eq("phone", userDTO.getPhone()));
+        if (userByPhone != null && !userByPhone.getUserId().equals(userId)) {
+            return Result.error(MessageConstant.PHONE + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User userByEmail = userMapper.selectOne(new QueryWrapper<User>().eq("email", userDTO.getEmail()));
+        if (userByEmail != null && !userByEmail.getUserId().equals(userId)) {
+            return Result.error(MessageConstant.EMAIL + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User user = new User();
+        BeanUtils.copyProperties(userDTO, user);
+        user.setUpdateTime(LocalDateTime.now());
+
+        if (userMapper.updateById(user) == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 更新用户头像
+     *
+     * @param avatarUrl 用户头像
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    public Result updateUserAvatar(String avatarUrl) {
+        Map<String, Object> map = ThreadLocalUtil.get();
+        Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
+        Long userId = TypeConversionUtil.toLong(userIdObj);
+
+        User user = userMapper.selectById(userId);
+        String userAvatar = user.getUserAvatar();
+        if (userAvatar != null && !userAvatar.isEmpty()) {
+            minioService.deleteFile(userAvatar);
+        }
+
+        if (userMapper.update(new User().setUserAvatar(avatarUrl).setUpdateTime(LocalDateTime.now()),
+                new QueryWrapper<User>().eq("id", userId)) == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 更新用户密码
+     *
+     * @param userPasswordDTO 用户密码信息
+     * @param token           认证token
+     * @return 结果
+     */
+    @Override
+    public Result updateUserPassword(UserPasswordDTO userPasswordDTO, String token) {
+        Map<String, Object> map = ThreadLocalUtil.get();
+        Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
+        Long userId = TypeConversionUtil.toLong(userIdObj);
+        User user = userMapper.selectById(userId);
+        // 旧密码校验：兼容历史 MD5 密文
+        if (!passwordEncoderUtil.matches(userPasswordDTO.getOldPassword(), user.getPassword())) {
+            return Result.error(MessageConstant.OLD_PASSWORD_ERROR);
+        }
+
+        /*
+         * 新密码不得与旧密码相同。
+         * 这里必须用 matches(明文, 库中密文) 判断，而不能像旧实现那样
+         * 拿"新密码的摘要"去比对库中密文 —— BCrypt 带随机盐，
+         * 同一个密码两次加密结果不同，摘要比较会永远不相等、
+         * 从而让这条校验形同虚设。
+         */
+        if (passwordEncoderUtil.matches(userPasswordDTO.getNewPassword(), user.getPassword())) {
+            return Result.error(MessageConstant.NEW_PASSWORD_ERROR);
+        }
+
+        if (!userPasswordDTO.getRepeatPassword().equals(userPasswordDTO.getNewPassword())) {
+            return Result.error(MessageConstant.PASSWORD_NOT_MATCH);
+        }
+
+        // 新密码一律以 BCrypt 存储
+        if (userMapper.update(new User().setPassword(passwordEncoderUtil.encode(userPasswordDTO.getNewPassword())).setUpdateTime(LocalDateTime.now()),
+                new QueryWrapper<User>().eq("id", userId)) == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+
+        // 注销token
+        stringRedisTemplate.delete(token);
+
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 重置用户密码
+     *
+     * <p>注意：验证码的校验与消费在 Controller 中完成（verifyVerificationCode 通过后才调用本方法）。
+     * 原实现在方法开头就删除验证码，导致"校验通过但后续失败（如两次密码不一致）"时
+     * 验证码已被烧掉，用户必须重新发码。现改为仅在校验成功、密码真正更新后再删除验证码。
+     *
+     * @param userResetPasswordDTO 用户密码信息
+     * @return 结果
+     */
+    @Override
+    public Result resetUserPassword(UserResetPasswordDTO userResetPasswordDTO) {
+        String email = normalizeEmail(userResetPasswordDTO.getEmail());
+
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", email));
+        if (user == null) {
+            return Result.error(MessageConstant.EMAIL + MessageConstant.NOT_EXIST);
+        }
+
+        if (!userResetPasswordDTO.getRepeatPassword().equals(userResetPasswordDTO.getNewPassword())) {
+            // 参数不合法，直接返回，不清除验证码，允许用户在有效期内重试
+            return Result.error(MessageConstant.PASSWORD_NOT_MATCH);
+        }
+
+        // 重置后同样以 BCrypt 存储
+        if (userMapper.update(new User().setPassword(passwordEncoderUtil.encode(userResetPasswordDTO.getNewPassword())).setUpdateTime(LocalDateTime.now()),
+                new QueryWrapper<User>().eq("id", user.getUserId())) == 0) {
+            return Result.error(MessageConstant.PASSWORD + MessageConstant.RESET + MessageConstant.FAILED);
+        }
+
+        // 密码更新成功后才消费验证码
+        stringRedisTemplate.delete("verificationCode:" + email);
+
+        return Result.success(MessageConstant.PASSWORD + MessageConstant.RESET + MessageConstant.SUCCESS);
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * 登出
+     *
+     * @param token 认证token
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = {"userCache", "userFavoriteCache", "songCache", "artistCache", "playlistCache"}, allEntries = true)
+    public Result logout(String token) {
+        // 注销token
+        Boolean result = stringRedisTemplate.delete(token);
+        if (result != null && result) {
+            return Result.success(MessageConstant.LOGOUT + MessageConstant.SUCCESS);
+        } else {
+            return Result.error(MessageConstant.LOGOUT + MessageConstant.FAILED);
+        }
+    }
+
+    /**
+     * 注销账户
+     *
+     * <p>tb_feedback.user_id 外键为 ON DELETE RESTRICT，用户只要提交过反馈，
+     * 删除用户就会抛 SQLIntegrityConstraintViolationException，最终被前端显示为"未知错误"。
+     * 注销语义本身就是"清除该用户全部数据"，因此这里先显式删除其反馈记录，再删用户。
+     *
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = {"userCache", "feedbackCache"}, allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Result deleteAccount() {
+        Map<String, Object> map = ThreadLocalUtil.get();
+        Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
+        Long userId = TypeConversionUtil.toLong(userIdObj);
+
+        // 查询用户信息，获取头像 URL
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.error(MessageConstant.USER + MessageConstant.NOT_EXIST);
+        }
+
+        // 先清理 RESTRICT 外键依赖的反馈记录，避免删除失败
+        feedbackMapper.delete(new QueryWrapper<Feedback>().eq("user_id", userId));
+
+        // 删除头像
+        String userAvatar = user.getUserAvatar();
+        if (userAvatar != null && !userAvatar.isEmpty()) {
+            minioService.deleteFile(userAvatar);
+        }
+
+        // 删除用户
+        if (userMapper.deleteById(userId) == 0) {
+            return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.DELETE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 获取所有用户数量
+     *
+     * @return 用户数量
+     */
+    @Override
+    public Result<Long> getAllUsersCount() {
+        return Result.success(userMapper.selectCount(new QueryWrapper<>()));
+    }
+
+    /**
+     * 分页查询所有用户
+     *
+     * @param userSearchDTO 用户查询条件
+     * @return 用户分页信息
+     */
+    @Override
+    @Cacheable(key = "#userSearchDTO.pageNum + '-' + #userSearchDTO.pageSize + '-' + #userSearchDTO.username + '-' + #userSearchDTO.phone + '-' + #userSearchDTO.userStatus")
+    public Result<PageResult<UserManagementVO>> getAllUsers(UserSearchDTO userSearchDTO) {
+        // 分页查询
+        Page<User> page = new Page<>(userSearchDTO.getPageNum(), userSearchDTO.getPageSize());
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        // 根据 userSearchDTO 的条件构建查询条件
+        if (userSearchDTO.getUsername() != null) {
+            queryWrapper.like("username", userSearchDTO.getUsername());
+        }
+        if (userSearchDTO.getPhone() != null) {
+            queryWrapper.like("phone", userSearchDTO.getPhone());
+        }
+        if (userSearchDTO.getUserStatus() != null) {
+            queryWrapper.eq("status", userSearchDTO.getUserStatus().getId());
+        }
+
+        // 倒序排序
+        queryWrapper.orderByDesc("create_time");
+
+        IPage<User> userPage = userMapper.selectPage(page, queryWrapper);
+        if (userPage.getRecords().size() == 0) {
+            return Result.success(MessageConstant.DATA_NOT_FOUND, new PageResult<>(0L, null));
+        }
+
+        // 转换为 UserManagementVO
+        List<UserManagementVO> userVOList = userPage.getRecords().stream()
+                .map(user -> {
+                    UserManagementVO userVO = new UserManagementVO();
+                    BeanUtils.copyProperties(user, userVO);
+                    return userVO;
+                }).toList();
+
+        return Result.success(new PageResult<>(userPage.getTotal(), userVOList));
+    }
+
+    /**
+     * 添加用户
+     *
+     * @param userAddDTO 用户信息
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    public Result addUser(UserAddDTO userAddDTO) {
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("username", userAddDTO.getUsername())
+                .or()
+                .eq("phone", userAddDTO.getPhone())
+                .or()
+                .eq("email", userAddDTO.getEmail());
+
+        List<User> existingUsers = userMapper.selectList(queryWrapper);
+        if (existingUsers != null && !existingUsers.isEmpty()) {
+            for (User user : existingUsers) {
+                if (user.getUsername().equals(userAddDTO.getUsername())) {
+                    return Result.error(MessageConstant.USERNAME + MessageConstant.ALREADY_EXISTS);
+                }
+                if (user.getPhone().equals(userAddDTO.getPhone())) {
+                    return Result.error(MessageConstant.PHONE + MessageConstant.ALREADY_EXISTS);
+                }
+                if (user.getEmail().equals(userAddDTO.getEmail())) {
+                    return Result.error(MessageConstant.EMAIL + MessageConstant.ALREADY_EXISTS);
+                }
+            }
+        }
+
+        String passwordHash = passwordEncoderUtil.encode(userAddDTO.getPassword());
+        User user = new User();
+        user.setUsername(userAddDTO.getUsername()).setPassword(passwordHash).setPhone(userAddDTO.getPhone())
+                .setEmail(userAddDTO.getEmail()).setIntroduction(userAddDTO.getIntroduction())
+                .setCreateTime(LocalDateTime.now()).setUpdateTime(LocalDateTime.now());
+
+        // 前端传递的用户状态（1：启用，0：禁用）需反转
+        if (userAddDTO.getUserStatus().getId() == 1) {
+            user.setUserStatus(UserStatusEnum.ENABLE);  // 数据库（0：启用）
+        } else if (userAddDTO.getUserStatus().getId() == 0) {
+            user.setUserStatus(UserStatusEnum.DISABLE);    // 数据库（1：禁用）
+        }
+
+        if (userMapper.insert(user) == 0) {
+            return Result.error(MessageConstant.ADD + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.ADD + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 更新用户
+     *
+     * @param userDTO 用户信息
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    public Result updateUser(UserDTO userDTO) {
+        Long userId = userDTO.getUserId();
+
+        User userByUsername = userMapper.selectOne(new QueryWrapper<User>().eq("username", userDTO.getUsername()));
+        if (userByUsername != null && !userByUsername.getUserId().equals(userId)) {
+            return Result.error(MessageConstant.USERNAME + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User userByPhone = userMapper.selectOne(new QueryWrapper<User>().eq("phone", userDTO.getPhone()));
+        if (userByPhone != null && !userByPhone.getUserId().equals(userId)) {
+            return Result.error(MessageConstant.PHONE + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User userByEmail = userMapper.selectOne(new QueryWrapper<User>().eq("email", userDTO.getEmail()));
+        if (userByEmail != null && !userByEmail.getUserId().equals(userId)) {
+            return Result.error(MessageConstant.EMAIL + MessageConstant.ALREADY_EXISTS);
+        }
+
+        User user = new User();
+        BeanUtils.copyProperties(userDTO, user);
+        user.setUpdateTime(LocalDateTime.now());
+
+        if (userMapper.updateById(user) == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 更新用户状态
+     *
+     * @param userId     用户id
+     * @param userStatus 状态
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "userCache", allEntries = true)
+    public Result updateUserStatus(Long userId, Integer userStatus) {
+        // 确保用户状态有效
+        UserStatusEnum statusEnum;
+        if (userStatus == 0) {
+            statusEnum = UserStatusEnum.ENABLE;
+        } else if (userStatus == 1) {
+            statusEnum = UserStatusEnum.DISABLE;
+        } else {
+            return Result.error(MessageConstant.USER_STATUS_INVALID);
+        }
+
+        // 更新用户状态
+        User user = new User();
+        user.setUserStatus(statusEnum).setUpdateTime(LocalDateTime.now());
+
+        int rows = userMapper.update(user, new QueryWrapper<User>().eq("id", userId));
+        if (rows == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 删除用户
+     *
+     * <p>tb_feedback.user_id 为 ON DELETE RESTRICT，需先清理该用户的反馈记录，
+     * 否则删除会抛外键异常，前端只看到"未知错误"。
+     *
+     * @param userId 用户id
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = {"userCache", "feedbackCache"}, allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Result deleteUser(Long userId) {
+        feedbackMapper.delete(new QueryWrapper<Feedback>().eq("user_id", userId));
+        if (userMapper.deleteById(userId) == 0) {
+            return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.DELETE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 批量删除用户
+     *
+     * @param userIds 用户id数组
+     * @return 结果
+     */
+    @Override
+    @CacheEvict(cacheNames = {"userCache", "feedbackCache"}, allEntries = true)
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Result deleteUsers(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Result.error("请选择要删除的用户");
+        }
+        feedbackMapper.delete(new QueryWrapper<Feedback>().in("user_id", userIds));
+        if (userMapper.deleteByIds(userIds) == 0) {
+            return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
+        }
+        return Result.success(MessageConstant.DELETE + MessageConstant.SUCCESS);
+    }
+
+}

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="cn.edu.seig.vibemusic.mapper.ArtistMapper">
+<mapper namespace="cn.edu.seig.jojomusic.mapper.ArtistMapper">
 
     <!-- 定义 ResultMap -->
-    <resultMap id="ArtistDetailVOResultMap" type="cn.edu.seig.vibemusic.model.vo.ArtistDetailVO">
+    <resultMap id="ArtistDetailVOResultMap" type="cn.edu.seig.jojomusic.model.vo.ArtistDetailVO">
         <id column="artistId" property="artistId"/>
         <result column="artistName" property="artistName"/>
         <result column="gender" property="gender"/>
@@ -46,7 +46,7 @@
     </update>
 
     <!-- 查询该歌手参与的全部歌曲，包括主艺人和合作艺人 -->
-    <select id="getSongsByArtistId" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">
+    <select id="getSongsByArtistId" resultType="cn.edu.seig.jojomusic.model.vo.SongVO">
         SELECT s.id           AS songId,
                s.name         AS songName,
                CONCAT_WS(' / ',

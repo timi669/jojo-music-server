@@ -1,0 +1,469 @@
+package cn.edu.seig.jojomusic.service.impl;
+
+import cn.edu.seig.jojomusic.constant.JwtClaimsConstant;
+import cn.edu.seig.jojomusic.constant.MessageConstant;
+import cn.edu.seig.jojomusic.enumeration.LikeStatusEnum;
+import cn.edu.seig.jojomusic.enumeration.RoleEnum;
+import cn.edu.seig.jojomusic.mapper.ArtistMapper;
+import cn.edu.seig.jojomusic.mapper.SongArtistMapper;
+import cn.edu.seig.jojomusic.mapper.SongMapper;
+import cn.edu.seig.jojomusic.mapper.UserFavoriteMapper;
+import cn.edu.seig.jojomusic.model.dto.ArtistAddDTO;
+import cn.edu.seig.jojomusic.model.dto.ArtistDTO;
+import cn.edu.seig.jojomusic.model.dto.ArtistUpdateDTO;
+import cn.edu.seig.jojomusic.model.entity.Artist;
+import cn.edu.seig.jojomusic.model.entity.Song;
+import cn.edu.seig.jojomusic.model.entity.SongArtist;
+import cn.edu.seig.jojomusic.model.entity.UserFavorite;
+import cn.edu.seig.jojomusic.model.vo.ArtistDetailVO;
+import cn.edu.seig.jojomusic.model.vo.ArtistNameVO;
+import cn.edu.seig.jojomusic.model.vo.ArtistVO;
+import cn.edu.seig.jojomusic.model.vo.SongVO;
+import cn.edu.seig.jojomusic.result.PageResult;
+import cn.edu.seig.jojomusic.result.Result;
+import cn.edu.seig.jojomusic.service.IArtistService;
+import cn.edu.seig.jojomusic.service.MinioService;
+import cn.edu.seig.jojomusic.util.JwtUtil;
+import cn.edu.seig.jojomusic.util.TypeConversionUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * <p>
+ * 服务实现类
+ * </p>
+ *
+ * @author timi669
+ * @since 2025-01-09
+ */
+@Service
+@CacheConfig(cacheNames = "artistCache")
+public class ArtistServiceImpl extends ServiceImpl<ArtistMapper, Artist> implements IArtistService {
+
+    private static final int UNCLASSIFIED_GENDER = -2;
+    private static final String OTHER_AREA = "__OTHER__";
+    private static final String UNKNOWN_AREA = "__UNKNOWN__";
+    private static final List<List<String>> CLASSIFIED_AREA_VALUES = List.of(
+            List.of("China", "中国", "中國", "中华人民共和国", "中華人民共和國"),
+            List.of("United States", "United States of America", "USA", "美国", "美國",
+                    "美利坚合众国", "美利堅合眾國"),
+            List.of("Canada", "加拿大"),
+            List.of("Taiwan", "Taiwan, Province of China", "中国台湾", "中國台灣", "台湾", "臺灣",
+                    "中华民国", "中華民國"),
+            List.of("South Korea", "Korea, Republic of", "韩国", "韓國", "大韩民国", "大韓民國"),
+            List.of("Japan", "日本"),
+            List.of("Brazil", "巴西")
+    );
+    private static final List<String> ALL_CLASSIFIED_AREA_VALUES = CLASSIFIED_AREA_VALUES.stream()
+            .flatMap(List::stream)
+            .distinct()
+            .toList();
+
+    @Autowired
+    private ArtistMapper artistMapper;
+    @Autowired
+    private UserFavoriteMapper userFavoriteMapper;
+    @Autowired
+    private MinioService minioService;
+    @Autowired
+    private SongMapper songMapper;
+    @Autowired
+    private SongArtistMapper songArtistMapper;
+
+    private void applyArtistFilters(QueryWrapper<Artist> queryWrapper, ArtistDTO artistDTO) {
+        if (artistDTO.getArtistName() != null && !artistDTO.getArtistName().isBlank()) {
+            queryWrapper.like("name", artistDTO.getArtistName());
+        }
+        applyArtistDemographicFilters(queryWrapper, artistDTO.getGender(), artistDTO.getArea());
+    }
+
+    static void applyArtistDemographicFilters(QueryWrapper<Artist> queryWrapper, Integer gender, String area) {
+        if (gender != null) {
+            if (gender == UNCLASSIFIED_GENDER) {
+                queryWrapper.isNull("gender");
+            } else {
+                queryWrapper.eq("gender", gender);
+            }
+        }
+        if (area == null || area.isBlank()) {
+            return;
+        }
+        if (OTHER_AREA.equals(area)) {
+            queryWrapper.notIn("area", ALL_CLASSIFIED_AREA_VALUES).isNotNull("area").ne("area", "");
+        } else if (UNKNOWN_AREA.equals(area)) {
+            queryWrapper.and(wrapper -> wrapper.isNull("area").or().eq("area", ""));
+        } else {
+            List<String> matchingAreaValues = CLASSIFIED_AREA_VALUES.stream()
+                    .filter(values -> values.contains(area))
+                    .findFirst()
+                    .orElse(List.of(area));
+            queryWrapper.in("area", matchingAreaValues);
+        }
+    }
+
+    /**
+     * 获取所有歌手列表
+     *
+     * @param artistDTO artistDTO
+     * @return 歌手列表
+     */
+    @Override
+    @Cacheable(key = "'artist-classification-v5-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
+    public Result<PageResult<ArtistVO>> getAllArtists(ArtistDTO artistDTO) {
+        // 分页查询
+        Page<Artist> page = new Page<>(artistDTO.getPageNum(), artistDTO.getPageSize());
+        QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
+        applyArtistFilters(queryWrapper, artistDTO);
+        queryWrapper.orderByAsc("name");
+
+        IPage<Artist> artistPage = artistMapper.selectPage(page, queryWrapper);
+        if (artistPage.getRecords().size() == 0) {
+            return Result.success(MessageConstant.DATA_NOT_FOUND, new PageResult<>(0L, null));
+        }
+
+        // 转换成 ArtistVO
+        List<ArtistVO> artistVOList = artistPage.getRecords().stream()
+                .map(artist -> {
+                    ArtistVO artistVO = new ArtistVO();
+                    BeanUtils.copyProperties(artist, artistVO);
+                    return artistVO;
+                }).toList();
+
+        return Result.success(new PageResult<>(artistPage.getTotal(), artistVOList));
+    }
+
+    /**
+     * 获取所有歌手列表（含详情）
+     *
+     * @param artistDTO artistDTO
+     * @return 歌手列表
+     */
+    @Override
+    @Cacheable(key = "'artist-admin-v5-' + #artistDTO.pageNum + '-' + #artistDTO.pageSize + '-' + #artistDTO.artistName + '-' + #artistDTO.gender + '-' + #artistDTO.area")
+    public Result<PageResult<Artist>> getAllArtistsAndDetail(ArtistDTO artistDTO) {
+        // 分页查询
+        Page<Artist> page = new Page<>(artistDTO.getPageNum(), artistDTO.getPageSize());
+        QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
+        applyArtistFilters(queryWrapper, artistDTO);
+
+        // 倒序排序
+        queryWrapper.orderByDesc("id");
+
+        IPage<Artist> artistPage = artistMapper.selectPage(page, queryWrapper);
+        if (artistPage.getRecords().size() == 0) {
+            return Result.success(MessageConstant.DATA_NOT_FOUND, new PageResult<>(0L, null));
+        }
+
+        return Result.success(new PageResult<>(artistPage.getTotal(), artistPage.getRecords()));
+    }
+
+    /**
+     * 获取所有歌手id和歌手名称
+     *
+     * @return 歌手名称列表
+     */
+    @Override
+    @Cacheable(key = "'artist-names-v3'")
+    public Result<List<ArtistNameVO>> getAllArtistNames() {
+        List<Artist> artists = artistMapper.selectList(new QueryWrapper<Artist>().orderByDesc("id"));
+        if (artists.isEmpty()) {
+            return Result.success(MessageConstant.DATA_NOT_FOUND, null);
+        }
+
+        List<ArtistNameVO> artistNameVOList = artists.stream()
+                .map(artist -> {
+                    ArtistNameVO artistNameVO = new ArtistNameVO();
+                    artistNameVO.setArtistId(artist.getArtistId());
+                    artistNameVO.setArtistName(artist.getArtistName());
+                    return artistNameVO;
+                }).toList();
+
+        return Result.success(artistNameVOList);
+    }
+
+    /**
+     * 获取随机歌手
+     * 随机歌手的数量为 10
+     *
+     * @return 随机歌手列表
+     */
+    @Override
+    public Result<List<ArtistVO>> getRandomArtists() {
+        QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
+        queryWrapper.last("ORDER BY RAND() LIMIT 10");
+
+        List<Artist> artists = artistMapper.selectList(queryWrapper);
+        if (artists.isEmpty()) {
+            return Result.success(MessageConstant.DATA_NOT_FOUND, null);
+        }
+
+        List<ArtistVO> artistVOList = artists.stream()
+                .map(artist -> {
+                    ArtistVO artistVO = new ArtistVO();
+                    BeanUtils.copyProperties(artist, artistVO);
+                    return artistVO;
+                }).toList();
+
+        return Result.success(artistVOList);
+    }
+
+    /**
+     * 获取歌手详情
+     *
+     * @param artistId 歌手id
+     * @param request  HttpServletRequest，用于获取请求头中的 token
+     * @return 歌手详情
+     */
+    @Override
+    @Cacheable(key = "'artist-detail-v6-' + T(cn.edu.seig.jojomusic.util.JwtUtil).resolveCacheUserKey(#request) + '-' + #artistId")
+    public Result<ArtistDetailVO> getArtistDetail(Long artistId, HttpServletRequest request) {
+        ArtistDetailVO artistDetailVO = artistMapper.getArtistDetailById(artistId);
+
+        // 设置默认状态
+        List<SongVO> songVOList = artistMapper.getSongsByArtistId(artistId);
+        songVOList.forEach(songVO -> songVO.setLikeStatus(LikeStatusEnum.DEFAULT.getId()));
+
+        // 获取请求头中的 token
+        String token = request.getHeader("Authorization");
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7); // 去掉 "Bearer " 前缀
+        }
+
+        Map<String, Object> map = null;
+        if (token != null && !token.isEmpty()) {
+            map = JwtUtil.parseToken(token);
+        }
+
+        // 如果 token 解析成功且用户为登录状态，进一步操作
+        if (map != null) {
+            String role = (String) map.get(JwtClaimsConstant.ROLE);
+            if (role.equals(RoleEnum.USER.getRole())) {
+                Object userIdObj = map.get(JwtClaimsConstant.USER_ID);
+                Long userId = TypeConversionUtil.toLong(userIdObj);
+
+                // 获取用户收藏的歌曲
+                List<UserFavorite> favoriteSongs = userFavoriteMapper.selectList(new QueryWrapper<UserFavorite>()
+                        .eq("user_id", userId)
+                        .eq("type", 0));
+
+                // 获取用户收藏的歌曲 id
+                Set<Long> favoriteSongIds = favoriteSongs.stream()
+                        .map(UserFavorite::getSongId)
+                        .collect(Collectors.toSet());
+
+                // 检查并更新状态
+                for (SongVO songVO : songVOList) {
+                    if (favoriteSongIds.contains(songVO.getSongId())) {
+                        songVO.setLikeStatus(LikeStatusEnum.LIKE.getId());
+                    }
+                }
+            }
+        }
+
+        // 设置歌曲列表
+        artistDetailVO.setSongs(songVOList);
+
+        return Result.success(artistDetailVO);
+    }
+
+    /**
+     * 获取所有歌手数量
+     *
+     * @param gender 性别
+     * @param area   地区
+     * @return 歌手数量
+     */
+    @Override
+    public Result<Long> getAllArtistsCount(Integer gender, String area) {
+        QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
+        applyArtistDemographicFilters(queryWrapper, gender, area);
+
+        return Result.success(artistMapper.selectCount(queryWrapper));
+    }
+
+    /**
+     * 添加歌手
+     *
+     * @param artistAddDTO 歌手添加DTO
+     * @return 添加结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "artistCache", allEntries = true)
+    public Result addArtist(ArtistAddDTO artistAddDTO) {
+        QueryWrapper<Artist> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("name", artistAddDTO.getArtistName());
+        if (artistMapper.selectCount(queryWrapper) > 0) {
+            return Result.error(MessageConstant.ARTIST + MessageConstant.ALREADY_EXISTS);
+        }
+
+        Artist artist = new Artist();
+        BeanUtils.copyProperties(artistAddDTO, artist);
+        artistMapper.insert(artist);
+
+        return Result.success(MessageConstant.ADD + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 更新歌手
+     *
+     * @param artistUpdateDTO 歌手更新DTO
+     * @return 更新结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "artistCache", allEntries = true)
+    public Result updateArtist(ArtistUpdateDTO artistUpdateDTO) {
+        Long artistId = artistUpdateDTO.getArtistId();
+        Artist existingArtist = artistMapper.selectById(artistId);
+        if (existingArtist == null) {
+            return Result.error(MessageConstant.ARTIST + MessageConstant.NOT_FOUND);
+        }
+
+        Artist artistByArtistName = artistMapper.selectOne(new QueryWrapper<Artist>().eq("name", artistUpdateDTO.getArtistName()));
+        if (artistByArtistName != null && !artistByArtistName.getArtistId().equals(artistId)) {
+            return Result.error(MessageConstant.ARTIST + MessageConstant.ALREADY_EXISTS);
+        }
+
+        Artist artist = new Artist();
+        BeanUtils.copyProperties(artistUpdateDTO, artist);
+        if (artistMapper.updateById(artist) == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 更新歌手头像
+     *
+     * @param artistId 歌手id
+     * @param avatar   头像
+     * @return 更新结果
+     */
+    @Override
+    @CacheEvict(cacheNames = "artistCache", allEntries = true)
+    public Result updateArtistAvatar(Long artistId, String avatar) {
+        Artist artist = artistMapper.selectById(artistId);
+        String avatarUrl = artist.getAvatar();
+        if (avatarUrl != null && !avatarUrl.isEmpty()) {
+            minioService.deleteFile(avatarUrl);
+        }
+        artist.setAvatar(avatar);
+        artist.setAvatar(avatar);
+        if (artistMapper.updateById(artist) == 0) {
+            return Result.error(MessageConstant.UPDATE + MessageConstant.FAILED);
+        }
+
+        return Result.success(MessageConstant.UPDATE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 删除歌手
+     *
+     * <p>安全约束（防数据静默丢失）：
+     * <ul>
+     *   <li>tb_song.artist_id 外键为 ON DELETE CASCADE，直接删歌手会连带删除其名下全部歌曲，
+     *       且这些歌曲在 MinIO 的音频/封面不会被清理，形成孤立对象。因此这里先做前置校验：
+     *       若该歌手名下仍有歌曲（作为主艺人），拒绝删除并提示先转移或删除歌曲。</li>
+     *   <li>歌手作为合作艺人（仅存在于 tb_song_artist）时，先显式删除其关联行，再删歌手。</li>
+     * </ul>
+     *
+     * @param artistId 歌手id
+     * @return 删除结果
+     */
+    @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {"artistCache", "songCache"}, allEntries = true)
+    public Result deleteArtist(Long artistId) {
+        // 1. 查询歌手信息
+        Artist artist = artistMapper.selectById(artistId);
+        if (artist == null) {
+            return Result.error(MessageConstant.ARTIST + MessageConstant.NOT_FOUND);
+        }
+
+        // 2. 前置校验：名下仍有歌曲则拒绝（避免 CASCADE 连带删除歌曲及其 MinIO 资源变成孤儿）
+        Long songCount = songMapper.selectCount(
+                new QueryWrapper<Song>().eq("artist_id", artistId));
+        if (songCount != null && songCount > 0) {
+            return Result.error("该歌手名下仍有 " + songCount
+                    + " 首歌曲，删除会连带删除这些歌曲且无法恢复。请先删除或改派歌曲所属歌手后再试。");
+        }
+
+        // 3. 先清理该歌手的合作艺人关联（tb_song_artist），避免依赖外键级联
+        songArtistMapper.delete(new QueryWrapper<SongArtist>().eq("artist_id", artistId));
+
+        // 4. 删除 MinIO 头像
+        String avatarUrl = artist.getAvatar();
+        if (avatarUrl != null && !avatarUrl.isEmpty()) {
+            minioService.deleteFile(avatarUrl);
+        }
+
+        // 5. 删除歌手记录
+        if (artistMapper.deleteById(artistId) == 0) {
+            return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
+        }
+
+        return Result.success(MessageConstant.DELETE + MessageConstant.SUCCESS);
+    }
+
+    /**
+     * 批量删除歌手
+     *
+     * <p>与单条删除一致：任一歌手名下仍有歌曲则整批拒绝，避免级联删除歌曲造成数据丢失。
+     *
+     * @param artistIds 歌手id列表
+     * @return 删除结果
+     */
+    @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = {"artistCache", "songCache"}, allEntries = true)
+    public Result deleteArtists(List<Long> artistIds) {
+        if (artistIds == null || artistIds.isEmpty()) {
+            return Result.error("请选择要删除的歌手");
+        }
+
+        // 1. 前置校验：任一名下有歌曲则整批拒绝
+        Long songCount = songMapper.selectCount(
+                new QueryWrapper<Song>().in("artist_id", artistIds));
+        if (songCount != null && songCount > 0) {
+            return Result.error("所选歌手中名下仍有 " + songCount
+                    + " 首歌曲，删除会连带删除这些歌曲且无法恢复。请先删除或改派歌曲所属歌手后再试。");
+        }
+
+        // 2. 查询歌手信息，获取头像 URL 列表
+        List<Artist> artists = artistMapper.selectByIds(artistIds);
+        List<String> avatarUrlList = artists.stream()
+                .map(Artist::getAvatar)
+                .filter(avatarUrl -> avatarUrl != null && !avatarUrl.isEmpty())
+                .toList();
+
+        // 3. 先清理合作艺人关联
+        songArtistMapper.delete(new QueryWrapper<SongArtist>().in("artist_id", artistIds));
+
+        // 4. 删除 MinIO 头像
+        for (String avatarUrl : avatarUrlList) {
+            minioService.deleteFile(avatarUrl);
+        }
+
+        // 5. 删除歌手记录
+        if (artistMapper.deleteByIds(artistIds) == 0) {
+            return Result.error(MessageConstant.DELETE + MessageConstant.FAILED);
+        }
+
+        return Result.success(MessageConstant.DELETE + MessageConstant.SUCCESS);
+    }
+
+}
