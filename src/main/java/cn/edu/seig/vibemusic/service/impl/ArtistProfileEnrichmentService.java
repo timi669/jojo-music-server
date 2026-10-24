@@ -138,6 +138,10 @@ public class ArtistProfileEnrichmentService {
 
     private void run(ArtistProfileEnrichmentStatus job) {
         try {
+            // 重置外源 Provider 的单轮状态（调用预算、熔断），否则跨轮累加会让国籍/性别不再被查询。
+            if (metadataProvider instanceof CompositeArtistMetadataProvider compositeProvider) {
+                compositeProvider.resetForNewRun();
+            }
             List<Song> songs = songMapper.selectAudioArtistScanTargets();
             job.setAudioSongsTotal(songs.size());
             ArtistScanResult scanResult = scanAudioArtistNames(songs, job);

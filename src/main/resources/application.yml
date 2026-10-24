@@ -109,3 +109,9 @@ artist-metadata:
   netease-throttle-millis: ${ARTIST_METADATA_NETEASE_THROTTLE:900}
   # 百度百科的请求间隔。
   baike-throttle-millis: ${ARTIST_METADATA_BAIKE_THROTTLE:600}
+  # Wikidata 补充国籍/性别（读 P27/P21 结构化属性，带 P106 职业门禁防同名错配）。
+  # 默认关闭：实测对匿名调用限流很严（一轮出现 47 次 HTTP 429），且每次都要经境外代理，
+  # 单轮补全会被拖到几十分钟才处理几十位。百度百科国内直连稳定、已能覆盖中文与部分外文
+  # 歌手的国籍/性别，因此以它为主力；网络条件好时可置 true 作为加强项。
+  wikidata-enabled: ${ARTIST_METADATA_WIKIDATA_ENABLED:false}
+  wikidata-throttle-millis: ${ARTIST_METADATA_WIKIDATA_THROTTLE:600}
