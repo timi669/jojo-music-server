@@ -2,7 +2,7 @@ spring:
   # 配置数据源
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://YOUR_MYSQL_HOST:3306/vibe_music?useUnicode=true&characterEncoding=utf-8&useSSL=false # 修改你的 MySQL 地址和库名
+    url: jdbc:mysql://YOUR_MYSQL_HOST:3306/jojo_music?useUnicode=true&characterEncoding=utf-8&useSSL=false # 修改你的 MySQL 地址和库名
     username: YOUR_MYSQL_USER # 修改你的 MySQL 用户名
     password: YOUR_MYSQL_PASSWORD # 修改你的 MySQL 密码
     type: com.alibaba.druid.pool.DruidDataSource # 配置连接池
