@@ -152,6 +152,29 @@ class BaiduBaikeArtistMetadataProviderTest {
         assertNull(BaiduBaikeArtistMetadataProvider.detectGender(null));
     }
 
+    @Test
+    void compoundProfessionsAreRecognised() {
+        // 实测 Trick Trick / Twista / Lil B 的词条用"说唱歌手"这种复合词；
+        // 只列"说唱"或只列"歌手"都会漏，导致个人被误判成"组合"。
+        assertEquals(Integer.valueOf(0), BaiduBaikeArtistMetadataProvider.detectGender("男说唱歌手"));
+        assertEquals(Integer.valueOf(0), BaiduBaikeArtistMetadataProvider.detectGender(
+                "Twista，本名Carl Terrell Mitchell，出生于美国伊利诺斯州芝加哥，男说唱歌手"));
+        assertEquals(Integer.valueOf(0), BaiduBaikeArtistMetadataProvider.detectGender(
+                "美国男歌手、音乐制作人"));
+        assertEquals(Integer.valueOf(1), BaiduBaikeArtistMetadataProvider.detectGender(
+                "美国女歌手、词曲作者、模特"));
+    }
+
+    @Test
+    void bandMembersAreIndividualsNotGroups() {
+        // 实测 Steve Perry 的词条是"美国Journey乐队主唱"——提到乐队，但他本人是个人歌手。
+        // 不能因为出现"乐队"就记成组合；此处没有性别字，应返回"不确定"而非 2。
+        assertNull(BaiduBaikeArtistMetadataProvider.detectGender("美国Journey乐队主唱"));
+        // 若有明确性别字，按个人判断
+        assertEquals(Integer.valueOf(0),
+                BaiduBaikeArtistMetadataProvider.detectGender("某乐队主唱，美国男歌手"));
+    }
+
     // ---------- 资料卡值清洗（HTML 与脚注） ----------
 
     @Test

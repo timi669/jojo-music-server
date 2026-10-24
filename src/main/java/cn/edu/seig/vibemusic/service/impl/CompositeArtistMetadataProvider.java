@@ -39,18 +39,25 @@ public class CompositeArtistMetadataProvider implements ArtistMetadataProvider {
     private final NetEaseArtistMetadataProvider netEaseProvider;
     private final BaiduBaikeArtistMetadataProvider baiduBaikeProvider;
     private final WikimediaArtistMetadataProvider wikimediaProvider;
+    private final WikidataDemographicsProvider wikidataDemographicsProvider;
     private final boolean wikimediaFallbackEnabled;
+    /** Wikidata 补充国籍/性别是否启用（默认关闭，见 lookup 内的说明）。 */
+    private final boolean wikidataEnabled;
 
     public CompositeArtistMetadataProvider(
             NetEaseArtistMetadataProvider netEaseProvider,
             BaiduBaikeArtistMetadataProvider baiduBaikeProvider,
             WikimediaArtistMetadataProvider wikimediaProvider,
-            @Value("${artist-metadata.wikimedia-fallback-enabled:false}") boolean wikimediaFallbackEnabled
+            WikidataDemographicsProvider wikidataDemographicsProvider,
+            @Value("${artist-metadata.wikimedia-fallback-enabled:false}") boolean wikimediaFallbackEnabled,
+            @Value("${artist-metadata.wikidata-enabled:false}") boolean wikidataEnabled
     ) {
         this.netEaseProvider = netEaseProvider;
         this.baiduBaikeProvider = baiduBaikeProvider;
         this.wikimediaProvider = wikimediaProvider;
+        this.wikidataDemographicsProvider = wikidataDemographicsProvider;
         this.wikimediaFallbackEnabled = wikimediaFallbackEnabled;
+        this.wikidataEnabled = wikidataEnabled;
     }
 
     @Override
@@ -92,6 +99,37 @@ public class CompositeArtistMetadataProvider implements ArtistMetadataProvider {
             }
         }
 
+        /*
+         * 国籍/性别仍缺时，用 Wikidata 的结构化属性补齐。
+         *
+         * 为什么单独一步：这两项是条目属性（P27/P21），不是文本；实测靠"摘要首句找国别词"
+         * 会写错（Jung Kook、JENNIE 被判成日本，Twista、Lil B 被判成组合）。Wikidata 读
+         * 属性才准确，且带 P106 职业门禁可挡掉同名无关条目（查"朱贺"会命中"明朝"）。
+         *
+         * ⚠️ 默认关闭（artist-metadata.wikidata-enabled=false）：实测 Wikidata 对匿名调用
+         * 限流很严（一轮出现 47 次 HTTP 429），且每次调用都要经境外代理，单轮补全被拖到
+         * 几十分钟才处理几十位。百度百科已能覆盖中文与部分外文歌手的国籍/性别，且国内直连
+         * 稳定，因此让它承担主力；Wikidata 作为可选加强项，网络条件好时再打开。
+         */
+        if (wikidataEnabled && (area == null || gender == null)) {
+            try {
+                WikidataDemographicsProvider.Demographics demo =
+                        wikidataDemographicsProvider.lookup(artistName).orElse(null);
+                if (demo != null) {
+                    if (area == null && demo.area() != null && !demo.area().isBlank()) {
+                        area = demo.area();
+                    }
+                    if (gender == null && demo.gender() != null) {
+                        gender = demo.gender();
+                    }
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (Exception exception) {
+                log.info("Wikidata 查询 '{}' 失败，跳过：{}", artistName, exception.getMessage());
+            }
+        }
+
         if (imageUrl.isEmpty() && introduction.isEmpty() && gender == null && area == null) {
             return Optional.empty();
         }
@@ -99,6 +137,16 @@ public class CompositeArtistMetadataProvider implements ArtistMetadataProvider {
                 imageUrl.isEmpty() ? "无" : "有", introduction.length(),
                 gender == null ? "无" : gender, area == null ? "无" : area);
         return Optional.of(new ArtistMetadata(imageUrl, introduction, gender, area));
+    }
+
+    /**
+     * 每轮补全开始时重置内部状态。
+     *
+     * <p>Wikidata 那次查询有"单轮预算"，不重置会跨轮累加，导致第二轮回合起
+     * 完全不再查询国籍/性别。
+     */
+    public void resetForNewRun() {
+        wikidataDemographicsProvider.resetForNewRun();
     }
 
     private java.util.List<Source> orderedSources() {

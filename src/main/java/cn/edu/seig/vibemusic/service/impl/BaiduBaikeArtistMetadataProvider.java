@@ -80,6 +80,9 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
     /** 百科返回的 title 占位值，表示没有命中词条。 */
     private static final String NO_ENTRY = "undefined";
     private static final Pattern NOISE = Pattern.compile("[\\s·・.,'\"’‘“”()（）\\[\\]【】\\-_]+");
+    /** 提取名字尾部括号里的内容，例如 {@code "로제 (ROSÉ)"} 中的 {@code ROSÉ}。 */
+    private static final Pattern TAIL_PARENTHETICAL =
+            Pattern.compile("[（(]\\s*([^()（）]+?)\\s*[）)]\\s*$");
     /** 简介有效性的最小文字字符数（排除 "[]"、"1111" 之类噪声）。 */
     private static final int MIN_LETTERS = 5;
     /**
@@ -88,12 +91,39 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
      * <p>必须成对出现，不能只匹配"男""女"——"男女对唱""女声和音"这类描述会误判。
      * 职业词表与 {@link #ENTERTAINMENT} 保持一致的文娱范围。
      */
+    /**
+     * 个人性别的判据：性别字 + 文娱职业词。
+     *
+     * <p>必须成对出现，不能只匹配"男""女"——"男女对唱""女声和音"这类描述会误判。
+     *
+     * <p>职业词必须覆盖<b>复合写法</b>：实测 {@code Trick Trick} 的词条写的是
+     * "美国<b>说唱歌手</b>"、{@code Twista} 是"<b>男说唱歌手</b>"，只列"说唱"或只列
+     * "歌手"都会漏——"说唱"后面紧跟"歌手"时，"说唱"两字与性别字并不相邻，正则匹配不到，
+     * 于是这两位会被误判成"组合/乐队"。因此这里显式列出"说唱歌手""唱作人""音乐制作人"
+     * 等常见复合词。
+     */
+    private static final String GENDER_PROFESSIONS = String.join("|",
+            // 复合说法要放在前面，避免被更短的分支抢先匹配
+            "说唱歌手", "饶舌歌手", "唱作人", "音乐制作人", "独立音乐人", "创作歌手",
+            "歌手", "演员", "艺人", "模特", "主持", "舞者", "音乐人", "作曲家", "词曲",
+            "说唱", "饶舌", "表演者", "导演", "配音", "艺术家", "演奏家", "乐手");
+
     private static final Pattern MALE_ARTIST = Pattern.compile(
-            "男(?:歌手|演员|艺人|模特|主持|舞者|音乐人|作曲家|词曲|说唱|表演者|导演|配音)",
-            Pattern.CASE_INSENSITIVE);
+            "男(?:" + GENDER_PROFESSIONS + ")", Pattern.CASE_INSENSITIVE);
     private static final Pattern FEMALE_ARTIST = Pattern.compile(
-            "女(?:歌手|演员|艺人|模特|主持|舞者|音乐人|作曲家|词曲|说唱|表演者|导演|配音)",
-            Pattern.CASE_INSENSITIVE);
+            "女(?:" + GENDER_PROFESSIONS + ")", Pattern.CASE_INSENSITIVE);
+
+    /** 组合/乐队的表述。 */
+    private static final Pattern GROUP = Pattern.compile("组合|乐队|乐团|演唱组合");
+
+    /**
+     * 描述的是"某乐队的主唱/成员"这类<b>个人身份</b>。
+     *
+     * <p>实测 {@code Steve Perry} 的词条是"美国Journey乐队主唱"——提到"乐队"但主体是他本人。
+     * 命中此模式时不判为组合，交给性别字判断；若无性别字则返回"不确定"，留空而不猜。
+     */
+    private static final Pattern BAND_MEMBER = Pattern.compile(
+            "(?:乐队|乐团|组合|合唱团)\\s*(?:的)?\\s*(?:前)?(?:主唱|成员|吉他手|贝斯手|鼓手|键盘手|队长)");
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -123,33 +153,75 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
         if (name.isEmpty()) {
             return Optional.empty();
         }
-        JsonNode entry = query(name);
-        if (entry == null) {
-            return Optional.empty();
-        }
-        String title = entry.path("title").asText("");
-        String summary = entry.path("abstract").asText("");
-        String desc = entry.path("desc").asText("");
-        if (!isUsableEntry(name, title, summary, desc)) {
-            log.debug("百度百科 '{}' 的词条不可用（title={} desc={}），已排除", name, title, desc);
-            return Optional.empty();
-        }
+        /*
+         * 逐个尝试名字变体。
+         *
+         * 库里的写法与百科词条标题常不一致：{@code "로제 (ROSÉ)"} 的括号里才是正式名，
+         * {@code "王力宏&谭维维"} 是合作条目；而像 {@code Lana Del Rey} 这类，百科标题是
+         * 中文译名 {@code 拉娜·德雷}，只能靠摘要里的原名确认。多变体 + 摘要校验能覆盖这些情况。
+         */
+        for (String candidate : nameVariants(name)) {
+            JsonNode entry = query(candidate);
+            if (entry == null) {
+                continue;
+            }
+            String title = entry.path("title").asText("");
+            String summary = entry.path("abstract").asText("");
+            String desc = entry.path("desc").asText("");
+            // 注意：身份校验用「候选名」而不是库里全名，因为查询就是用候选名做的。
+            if (!isUsableEntry(candidate, title, summary, desc)) {
+                log.debug("百度百科 '{}'（查询名 {}）的词条不可用（title={} desc={}），已排除",
+                        name, candidate, title, desc);
+                continue;
+            }
 
-        String introduction = sanitizeIntroduction(summary);
-        // 摘要本身太短时，用 desc（头衔）兜底——虽然简略，但比留空有用。
-        if (introduction.isEmpty()) {
-            introduction = sanitizeIntroduction(desc);
+            String introduction = sanitizeIntroduction(summary);
+            // 摘要本身太短时，用 desc（头衔）兜底——虽然简略，但比留空有用。
+            if (introduction.isEmpty()) {
+                introduction = sanitizeIntroduction(desc);
+            }
+            String imageUrl = entry.path("image").asText("");
+            if (imageUrl.isBlank()) {
+                imageUrl = "";
+            }
+            String area = extractNationality(entry);
+            Integer gender = detectGender(summary + " " + desc);
+            if (introduction.isEmpty() && imageUrl.isEmpty() && area == null && gender == null) {
+                continue;
+            }
+            return Optional.of(new ArtistMetadata(imageUrl, introduction, gender, area));
         }
-        String imageUrl = entry.path("image").asText("");
-        if (imageUrl.isBlank()) {
-            imageUrl = "";
+        return Optional.empty();
+    }
+
+    /**
+     * 生成用于查询的名字变体，按可信度排序。
+     *
+     * <p>顺序：去掉尾部括号的主体（库里通常是这个名字）→ 括号内内容（常是正式名/外文名）
+     * → 首位艺人（合作条目）→ 原始全名。
+     */
+    static java.util.List<String> nameVariants(String raw) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (raw == null || raw.isBlank()) {
+            return out;
         }
-        String area = extractNationality(entry);
-        Integer gender = detectGender(summary + " " + desc);
-        if (introduction.isEmpty() && imageUrl.isEmpty() && area == null && gender == null) {
-            return Optional.empty();
+        String head = raw.split("\\s*/\\s*|、|&|,|，|;|；", 2)[0].strip();
+        String stripped = head.replaceFirst("\\s*[\\(（][^()（）]*[\\)）]\\s*$", "").strip();
+        java.util.regex.Matcher inner = TAIL_PARENTHETICAL.matcher(head);
+        addIfAbsent(out, stripped);
+        if (inner.find()) {
+            addIfAbsent(out, inner.group(1));
         }
-        return Optional.of(new ArtistMetadata(imageUrl, introduction, gender, area));
+        addIfAbsent(out, head);
+        addIfAbsent(out, raw);
+        return out;
+    }
+
+    private static void addIfAbsent(java.util.List<String> list, String value) {
+        String trimmed = value == null ? "" : value.strip();
+        if (!trimmed.isEmpty() && !list.contains(trimmed)) {
+            list.add(trimmed);
+        }
     }
 
     /**
@@ -249,10 +321,8 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
          * 先判个人，再判组合。
          *
          * 顺序很重要：实测 {@code 薛黛霏} 的简介是"中国内地女歌手、演员，女子演唱组合
-         * 超级女团成员"——既含"女歌手"（说明本人是女歌手）又含"组合"（说明她所属的团体）。
-         * 若先判组合会把她标成"组合/乐队"，与事实不符。以"本人是什么"优先，
-         * 于是"女歌手"胜出；纯组合词条（如"中国内地男子演唱组合"）不含"男歌手/女歌手"
-         * 这类个人表述，自然落到组合分支。
+         * 超级女团成员"——既含"女歌手"（本人）又含"组合"（所属团体），应以本人为准。
+         * {@code JENNIE} 的"韩国女歌手，女子演唱组合BLACKPINK成员"同理。
          */
         if (MALE_ARTIST.matcher(text).find()) {
             return 0;
@@ -260,7 +330,15 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
         if (FEMALE_ARTIST.matcher(text).find()) {
             return 1;
         }
-        if (Pattern.compile("组合|乐队|乐团|演唱组合").matcher(text).find()) {
+        /*
+         * "XX乐队主唱/成员/吉他手"说的是<b>个人</b>，不能算组合。
+         * 实测 {@code Steve Perry} 的词条是"美国Journey乐队主唱"——他本人是男歌手，
+         * 若只因出现"乐队"就记成组合，会把个人标错。
+         */
+        if (BAND_MEMBER.matcher(text).find()) {
+            return null;
+        }
+        if (GROUP.matcher(text).find()) {
             return 2;
         }
         return null;
