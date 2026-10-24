@@ -102,3 +102,10 @@ minio:
 artist-metadata:
   proxy-host: ${ARTIST_METADATA_PROXY_HOST:}
   proxy-port: ${ARTIST_METADATA_PROXY_PORT:0}
+  # 歌手资料按 网易云 → 百度百科 →（可选）维基百科 的顺序取，第一个有结果者即采用。
+  # 网易云直连即可；百度百科用于补中文歌手（网易云常缺简介）；维基链门槛过严故默认关闭。
+  wikimedia-fallback-enabled: ${ARTIST_METADATA_WIKIMEDIA_FALLBACK:false}
+  # 网易云对高频访问敏感，请求间隔低于此值可能返回 code 405。
+  netease-throttle-millis: ${ARTIST_METADATA_NETEASE_THROTTLE:900}
+  # 百度百科的请求间隔。
+  baike-throttle-millis: ${ARTIST_METADATA_BAIKE_THROTTLE:600}

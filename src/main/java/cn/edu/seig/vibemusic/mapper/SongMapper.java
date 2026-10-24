@@ -64,6 +64,38 @@ public interface SongMapper extends BaseMapper<Song> {
             @Param("keyword") String keyword,
             @Param("limit") Integer limit);
 
+    /**
+     * 只取尚无歌词的歌曲，供自动抓取使用。
+     *
+     * <p>用 {@code lyric IS NULL OR TRIM(lyric) = ''} 作为条件，本身就是"已有的不动"的
+     * 第一道保障：已有歌词的歌曲根本不会进入候选集。
+     */
+    @Select("""
+            <script>
+            SELECT s.id AS songId,
+                   s.name AS songName,
+                   a.name AS artistName,
+                   COALESCE(credits.artistCredits, a.name) AS artistCredits,
+                   s.lyric AS lyricUrl,
+                   FALSE AS hasLyric
+            FROM tb_song s
+            LEFT JOIN tb_artist a ON a.id = s.artist_id
+            LEFT JOIN (
+                SELECT sa.song_id,
+                       GROUP_CONCAT(credit.name ORDER BY sa.credit_order SEPARATOR '|') AS artistCredits
+                FROM tb_song_artist sa
+                JOIN tb_artist credit ON credit.id = sa.artist_id
+                GROUP BY sa.song_id
+            ) credits ON credits.song_id = s.id
+            WHERE s.lyric IS NULL OR TRIM(s.lyric) = ''
+            ORDER BY s.id
+            <if test="limit != null">
+                LIMIT #{limit}
+            </if>
+            </script>
+            """)
+    List<LyricSongCandidate> selectSongsMissingLyric(@Param("limit") Integer limit);
+
     @Update("""
             UPDATE tb_song
             SET lyric = #{lyricUrl}
