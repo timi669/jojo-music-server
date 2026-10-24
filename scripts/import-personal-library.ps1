@@ -1,7 +1,7 @@
 param(
     [string]$PlanPath = (Join-Path $PSScriptRoot '..\target\personal-library-plan.json'),
     [string]$ConfigPath = (Join-Path $PSScriptRoot '..\src\main\resources\application-local.yml'),
-    [string]$DatabaseName = 'vibe_music_personal',
+    [string]$DatabaseName = 'jojo_music_personal',
     [switch]$Apply
 )
 
@@ -12,7 +12,7 @@ $mysqldump = Join-Path $mysqlHome 'mysqldump.exe'
 if (-not (Test-Path $mysql) -or -not (Test-Path $mysqldump)) {
     throw 'MySQL command-line client was not found in the configured installation directory.'
 }
-if ($DatabaseName -notmatch '^[A-Za-z0-9_]+$' -or $DatabaseName -eq 'vibe_music') {
+if ($DatabaseName -notmatch '^[A-Za-z0-9_]+$' -or $DatabaseName -eq 'jojo_music') {
     throw 'The personal database name is invalid or points at the existing sample database.'
 }
 
@@ -35,7 +35,7 @@ $databasePort = $databaseUrl.Groups[2].Value
 $sourceDatabase = $databaseUrl.Groups[3].Value
 $mysqlUser = $username.Groups[1].Value
 $mysqlPassword = $password.Groups[1].Value
-$publicMediaRoot = $minioEndpoint.Groups[1].Value.TrimEnd('/') + '/vibe-music-personal'
+$publicMediaRoot = $minioEndpoint.Groups[1].Value.TrimEnd('/') + '/jojo-music-personal'
 $personalConfigPath = Join-Path (Split-Path $ConfigPath -Parent) 'application-personal.yml'
 
 function ConvertTo-SqlLiteral([AllowNull()][object]$Value) {
@@ -109,10 +109,10 @@ try {
     }
 
     $targetDirectory = Split-Path ([System.IO.Path]::GetFullPath($PlanPath)) -Parent
-    $backupPath = Join-Path $targetDirectory 'vibe_music-before-personal-import.sql'
-    $schemaPath = Join-Path $targetDirectory 'vibe_music-schema.sql'
-    $dataPath = Join-Path $targetDirectory 'vibe_music_personal-data.sql'
-    $sourceDumpPath = Join-Path $PSScriptRoot '..\sql\vibe_music.sql'
+    $backupPath = Join-Path $targetDirectory 'jojo_music-before-personal-import.sql'
+    $schemaPath = Join-Path $targetDirectory 'jojo_music-schema.sql'
+    $dataPath = Join-Path $targetDirectory 'jojo_music_personal-data.sql'
+    $sourceDumpPath = Join-Path $PSScriptRoot '..\sql\jojo_music.sql'
 
     & $mysqldump "--defaults-extra-file=$optionsPath" --default-character-set=utf8mb4 --single-transaction --routines --triggers --events --result-file=$backupPath $sourceDatabase
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $backupPath)) {
@@ -158,8 +158,8 @@ try {
     $personalDatabaseUrl = "jdbc:mysql://$($databaseHost):$($databasePort)/$($DatabaseName)?"
     $personalConfig = $config.Replace($sourceDatabaseUrl, $personalDatabaseUrl)
     $personalConfig = [regex]::Replace($personalConfig, '(?m)^(\s{6}database:\s*)\d+\s*$', '${1}2')
-    $personalConfig = [regex]::Replace($personalConfig, '(?m)^(\s{2}bucket:\s*)[^\s#]+', '${1}vibe-music-personal')
-    if ($personalConfig -notmatch [regex]::Escape("/$DatabaseName?") -or $personalConfig -notmatch 'bucket:\s*vibe-music-personal') {
+    $personalConfig = [regex]::Replace($personalConfig, '(?m)^(\s{2}bucket:\s*)[^\s#]+', '${1}jojo-music-personal')
+    if ($personalConfig -notmatch [regex]::Escape("/$DatabaseName?") -or $personalConfig -notmatch 'bucket:\s*jojo-music-personal') {
         throw 'Unable to create the isolated personal profile from the local server settings.'
     }
     [System.IO.File]::WriteAllText($personalConfigPath, $personalConfig, [System.Text.UTF8Encoding]::new($false))

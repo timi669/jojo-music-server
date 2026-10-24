@@ -21,10 +21,10 @@ if (-not ($databaseUrl.Success -and $username.Success -and $password.Success -an
 }
 
 $targetDatabase = $databaseUrl.Groups[3].Value
-if ($targetDatabase -ne 'vibe_music_personal') {
-    throw "Refusing to repair unexpected database '$targetDatabase'. Expected vibe_music_personal."
+if ($targetDatabase -ne 'jojo_music_personal') {
+    throw "Refusing to repair unexpected database '$targetDatabase'. Expected jojo_music_personal."
 }
-$referenceDatabase = 'vibe_music'
+$referenceDatabase = 'jojo_music'
 if ($referenceDatabase -notmatch '^[A-Za-z0-9_]+$') {
     throw 'Reference database name is invalid.'
 }

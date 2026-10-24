@@ -71,7 +71,7 @@ foreach ($artistFile in $artistFiles) {
     $artistFilesByName[$normalizedName].Add($artistFile)
 }
 $legacyAvatarFilesByArtist = @{}
-$artistSqlPath = Join-Path $PSScriptRoot '..\sql\vibe_music.sql'
+$artistSqlPath = Join-Path $PSScriptRoot '..\sql\jojo_music.sql'
 if (Test-Path -LiteralPath $artistSqlPath) {
     $artistInsertPattern = [regex]::new(
         '^INSERT INTO `tb_artist` VALUES \(\d+,\s*''((?:\\.|[^''])*)'',\s*(?:NULL|\d+),\s*''((?:\\.|[^''])*)''',
