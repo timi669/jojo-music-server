@@ -109,6 +109,18 @@ class NetEaseLyricFetchServiceTest {
     }
 
     @Test
+    void stripsTrailingParentheticalForArtistMatching() {
+        // 网易云正式条目常附译名：BTS (防弹少年团) 才是本人（584 首歌），
+        // 而 "Bts"（49 首歌、"独立音乐人。"）是空壳。去括号后比对才能让真身入围，
+        // 再由作品数裁决胜出——否则会把空壳的简介当成本人资料（实测 BTS 就是这样写错的）。
+        assertEquals("BTS", NetEaseArtistMetadataProvider.stripTrailingParenthetical("BTS (防弹少年团)"));
+        assertEquals("로제", NetEaseArtistMetadataProvider.stripTrailingParenthetical("로제 (ROSÉ)"));
+        // 无括号注记时原样返回
+        assertEquals("Madonna", NetEaseArtistMetadataProvider.stripTrailingParenthetical("Madonna"));
+        assertEquals("", NetEaseArtistMetadataProvider.stripTrailingParenthetical(null));
+    }
+
+    @Test
     void searchVariantsTryParentheticalNameFirst() {
         // "로제 (ROSÉ)"：括号内是英文正式名，必须优先尝试——实测用括号外的 "로제"
         // 会命中只有 6 首歌、简介为空的韩文条目，而 "ROSÉ" 才是本人（76 首歌、70 字简介）。

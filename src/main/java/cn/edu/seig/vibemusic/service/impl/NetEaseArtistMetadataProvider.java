@@ -154,23 +154,33 @@ public class NetEaseArtistMetadataProvider implements ArtistMetadataProvider {
         }
 
         /*
-         * 收集候选：名称完全相等的，以及别名（alias/transNames）命中的。
+         * 收集候选：名称完全相等的、去掉尾部括号注记后相等的、以及别名命中的。
          *
          * 为什么要收别名：库里的 {@code BOL4} 在网易云有个同名空壳账号（5 首歌、
          * 简介为空），而真正的艺人是 {@code 脸红的思春期}——它的 alias 里写着 BOL4，
          * 有 164 首歌与 256 字简介。若只认精确名就会选中空壳，简介因此补不上。
-         * 两类候选合并后统一按作品数裁决，让真身胜出。
+         *
+         * 为什么要收"去尾部括号后相等"：网易云的正式条目常在名字后附译名，如
+         * {@code "BTS (防弹少年团)"}（584 首歌，"韩国男子演唱组合"），而 {@code "Bts"}
+         * 是个只有 49 首歌、简介写着"独立音乐人。"的空壳。只认严格相等会选中空壳——
+         * 实测 BTS 的简介正是这样被写错的。括号里的译名本身就是"同一人"的凭据，
+         * 与库里 {@code "로제 (ROSÉ)"} 的情形一致。
+         *
+         * 加宽后仍需防误选：{@code "Madonna (Karaoke)"}（12 首歌的卡拉 OK 账号）
+         * 也会因去括号后相等而入围，但下面的作品数裁决会把 3338 首歌的本尊选出来。
          */
         java.util.List<JsonNode> candidates = new java.util.ArrayList<>();
         java.util.List<JsonNode> exactMatches = new java.util.ArrayList<>();
         String key = normalize(matchedSearchName);
         for (JsonNode candidate : artists) {
-            boolean exactName = normalize(candidate.path("name").asText()).equals(key);
+            String candidateName = candidate.path("name").asText();
+            boolean exactName = normalize(candidateName).equals(key);
+            boolean parenStripped = normalize(stripTrailingParenthetical(candidateName)).equals(key);
             boolean aliasName = matchesAlias(candidate, key);
             if (exactName) {
                 exactMatches.add(candidate);
             }
-            if (exactName || aliasName) {
+            if (exactName || parenStripped || aliasName) {
                 candidates.add(candidate);
             }
         }
@@ -285,6 +295,20 @@ public class NetEaseArtistMetadataProvider implements ArtistMetadataProvider {
         if (!trimmed.isEmpty() && !list.contains(trimmed)) {
             list.add(trimmed);
         }
+    }
+
+    /**
+     * 去掉名字尾部的括号注记。
+     *
+     * <p>网易云的正式条目常在名字后附译名：{@code "BTS (防弹少年团)"}、
+     * {@code "로제 (ROSÉ)"}。比对时去掉这一段才能与本名相等。
+     * 无括号注记时原样返回。
+     */
+    static String stripTrailingParenthetical(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.replaceFirst("\\s*[\\(（][^()（）]*[\\)）]\\s*$", "").strip();
     }
 
     /**

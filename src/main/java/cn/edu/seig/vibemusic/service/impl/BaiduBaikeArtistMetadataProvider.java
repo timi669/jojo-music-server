@@ -82,6 +82,18 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
     private static final Pattern NOISE = Pattern.compile("[\\s·・.,'\"’‘“”()（）\\[\\]【】\\-_]+");
     /** 简介有效性的最小文字字符数（排除 "[]"、"1111" 之类噪声）。 */
     private static final int MIN_LETTERS = 5;
+    /**
+     * 个人性别的判据：性别字 + 文娱职业词。
+     *
+     * <p>必须成对出现，不能只匹配"男""女"——"男女对唱""女声和音"这类描述会误判。
+     * 职业词表与 {@link #ENTERTAINMENT} 保持一致的文娱范围。
+     */
+    private static final Pattern MALE_ARTIST = Pattern.compile(
+            "男(?:歌手|演员|艺人|模特|主持|舞者|音乐人|作曲家|词曲|说唱|表演者|导演|配音)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern FEMALE_ARTIST = Pattern.compile(
+            "女(?:歌手|演员|艺人|模特|主持|舞者|音乐人|作曲家|词曲|说唱|表演者|导演|配音)",
+            Pattern.CASE_INSENSITIVE);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -132,11 +144,126 @@ public class BaiduBaikeArtistMetadataProvider implements ArtistMetadataProvider 
         if (imageUrl.isBlank()) {
             imageUrl = "";
         }
-        if (introduction.isEmpty() && imageUrl.isEmpty()) {
+        String area = extractNationality(entry);
+        Integer gender = detectGender(summary + " " + desc);
+        if (introduction.isEmpty() && imageUrl.isEmpty() && area == null && gender == null) {
             return Optional.empty();
         }
-        // 百度百科不提供性别/国籍/生日，这里留空交由其他来源或人工补充。
-        return Optional.of(new ArtistMetadata(imageUrl, introduction, null, null));
+        return Optional.of(new ArtistMetadata(imageUrl, introduction, gender, area));
+    }
+
+    /**
+     * 剥掉百科资料卡值里的 HTML 与引用标注，得到纯文本。
+     *
+     * <p>百科的值形如
+     * {@code <a ...>中国</a><sup>179</sup><a name="ref_179"></a>}。
+     * <b>不能只删标签</b>——那样 {@code <sup>179</sup>} 的正文 "179" 会留下来，
+     * 实测因此写出了 {@code "中国179"}、{@code "美国2"} 这种脏值。正确做法是先把
+     * 「脚注上标 + 引用锚点」整段移除，再剥其余标签。
+     */
+    static String cleanCardValue(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String text = raw
+                // <sup>179</sup> / <sup>[1]</sup> 这类脚注上标连同内容一起删掉
+                .replaceAll("(?is)<sup\\b[^>]*>.*?</sup>", "")
+                // <a name="ref_179"></a> 这类引用锚点（无正文，删掉即可）
+                .replaceAll("(?is)<a\\b[^>]*name\\s*=\\s*\"?ref_[^\"]*\"?[^>]*>\\s*</a>", "")
+                // 其余标签只剥壳、保留正文（如 <a href=...>中国</a> -> 中国）
+                .replaceAll("<[^>]*>", "");
+        return text.strip();
+    }
+
+    /**
+     * 从词条资料卡里取「国籍」。
+     *
+     * <p><b>只认「国籍」</b>，不要「民族」：实测 {@code 谭维维}、{@code 薛黛霏} 的资料卡
+     * 里「民族=汉族」——民族是族群归属而非国籍，写成地区会把"汉族"填进国籍字段。
+     * 词条若无「国籍」字段则返回 null（留空好过填错）。
+     */
+    private static String extractNationality(JsonNode entry) {
+        return cardText(entry, "国籍", "國家", "国家");
+    }
+
+    /**
+     * 从资料卡里取指定字段的纯文本值。
+     *
+     * <p>多值字段（如多重国籍 {@code "美国、法国"}）只取第一个：库里既有的地区值都是
+     * 单值，前端 {@code areaLabels} 映射也按单值设计，写入多值会让按国家筛选时
+     * 匹配不到（{@code "美国、法国"} 既不是"美国"也不是"法国"）。取第一个即主国籍。
+     *
+     * @return 该字段的文本；不存在或为空时返回 null
+     */
+    private static String cardText(JsonNode entry, String... fieldNames) {
+        JsonNode card = entry.path("card");
+        if (!card.isArray()) {
+            return null;
+        }
+        for (JsonNode item : card) {
+            String fieldName = item.path("name").asText("");
+            for (String wanted : fieldNames) {
+                if (!wanted.equals(fieldName)) {
+                    continue;
+                }
+                JsonNode value = item.path("value");
+                String text;
+                if (value.isArray()) {
+                    StringBuilder builder = new StringBuilder();
+                    for (JsonNode part : value) {
+                        if (!builder.isEmpty()) {
+                            builder.append(' ');
+                        }
+                        builder.append(part.asText(""));
+                    }
+                    text = builder.toString();
+                } else {
+                    text = value.asText("");
+                }
+                String cleaned = cleanCardValue(text);
+                if (cleaned.isEmpty() || NO_ENTRY.equals(cleaned)) {
+                    continue;
+                }
+                // 多值取第一个（分隔符实测有中文顿号与逗号）。
+                String first = cleaned.split("、|,|，|/|;|；", 2)[0].strip();
+                return first.isEmpty() ? cleaned : first;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从简介文字里判断性别。
+     *
+     * <p>判据是「男/女 + 文娱职业」的组合（如"中国内地<b>女</b>歌手"、"澳大利亚<b>男</b>歌手"），
+     * 而不是单独出现"男""女"二字——后者在"男女对唱""女声"这类描述里会误判。
+     *
+     * <p>取值约定与库里一致：{@code 0=男, 1=女}（见 tb_artist.gender 注释；
+     * {@code 2} 专用于组合/乐队）。判断不出时返回 null，留空而不猜。
+     */
+    static Integer detectGender(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        /*
+         * 先判个人，再判组合。
+         *
+         * 顺序很重要：实测 {@code 薛黛霏} 的简介是"中国内地女歌手、演员，女子演唱组合
+         * 超级女团成员"——既含"女歌手"（说明本人是女歌手）又含"组合"（说明她所属的团体）。
+         * 若先判组合会把她标成"组合/乐队"，与事实不符。以"本人是什么"优先，
+         * 于是"女歌手"胜出；纯组合词条（如"中国内地男子演唱组合"）不含"男歌手/女歌手"
+         * 这类个人表述，自然落到组合分支。
+         */
+        if (MALE_ARTIST.matcher(text).find()) {
+            return 0;
+        }
+        if (FEMALE_ARTIST.matcher(text).find()) {
+            return 1;
+        }
+        if (Pattern.compile("组合|乐队|乐团|演唱组合").matcher(text).find()) {
+            return 2;
+        }
+        return null;
     }
 
     private JsonNode query(String name) throws IOException, InterruptedException {
