@@ -32,14 +32,41 @@ public class JwtUtil {
     private static final String DEV_FALLBACK_SECRET = "JOJO_MUSIC_DEV_ONLY";
 
     /**
-     * 需要拒绝的历史弱密钥。
+     * 判定密钥是否够强的最低长度。
      *
-     * <p>{@code "VIBE_MUSIC"} 是改名前的硬编码默认值，至今可能仍留在某些部署或本地
-     * 配置里；{@code DEV_FALLBACK_SECRET} 本身也不该被当成"已配置的强密钥"。
-     * 两者都要视为未配置，否则弱密钥会被误认为可用。
+     * <p>HMAC-SHA256 的密钥应至少与输出摘要等长，即 32 字节（256 位）；这是
+     * <a href="https://datatracker.ietf.org/doc/html/rfc7518#section-3.2">RFC 7518 §3.2</a>
+     * 对 HS256 的要求。
      */
-    private static final java.util.Set<String> WEAK_SECRETS =
-            java.util.Set.of("VIBE_MUSIC", DEV_FALLBACK_SECRET);
+    private static final int MIN_SECRET_LENGTH = 32;
+
+    /**
+     * 判断密钥是否可用。
+     *
+     * <p>用<b>强度校验</b>而不是维护一份"弱密钥黑名单"。黑名单只能挡已知的那几个值，
+     * 换个短口令照样能用；强度门槛则对任何过短的密钥都生效，也无需在源码里保留
+     * 具体的历史口令文本。
+     *
+     * <p>两条规则：
+     * <ol>
+     *   <li>配置为空 —— 视为未配置；</li>
+     *   <li>长度不足 {@link #MIN_SECRET_LENGTH}，或只有单一字符（如 {@code "aaaa..."}）——
+     *       这两类都容易被穷举或猜测。</li>
+     * </ol>
+     *
+     * <p>注意此处<b>不做</b>字典匹配：诸如 {@code "secret"} 这类常见词即使拼到 32 位
+     * 也未必安全。真正的判据交给长度与来源（环境变量），避免把安全寄望于关键词清单。
+     */
+    static boolean isAcceptableSecret(String candidate) {
+        if (candidate == null || candidate.isEmpty()) {
+            return false;
+        }
+        if (candidate.length() < MIN_SECRET_LENGTH) {
+            return false;
+        }
+        // 全部为同一个字符（忽略大小写）时应拒绝
+        return candidate.chars().distinct().count() > 2;
+    }
 
     /** JWT 过期时间：6 小时 */
     private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 6;
@@ -61,17 +88,18 @@ public class JwtUtil {
     /**
      * 容器初始化后把配置值写入静态字段。
      *
-     * <p>若配置为空，或仍是历史遗留的弱值（见 {@link #WEAK_SECRETS}），
-     * 则保留开发兜底值并打印告警，提示必须在部署前设置真实密钥。
+     * <p>长度与字符分布的校验见 {@link #isAcceptableSecret(String)}。配置为空或不够强时
+     * 保留开发兜底值并打印告警，提示必须在部署前设置真实密钥——这样本地开箱即用，
+     * 而公网部署如果忘了配置，启动日志会明确提示。
      */
     @PostConstruct
     void initSecret() {
         String candidate = configuredSecret == null ? "" : configuredSecret.trim();
-        if (candidate.isEmpty() || WEAK_SECRETS.contains(candidate)) {
+        if (!isAcceptableSecret(candidate)) {
             secretKey = DEV_FALLBACK_SECRET;
             usingFallbackSecret = true;
             System.err.println("""
-                    [安全告警] 未配置 app.jwt.secret（或仍为历史弱值），\
+                    [安全告警] app.jwt.secret 未配置或强度不足（要求至少 32 个字符且非重复字符），\
                     当前使用开发用默认密钥，**请勿用于公网部署**。\
                     生产环境请设置环境变量 APP_JWT_SECRET 或配置文件中的 app.jwt.secret。""");
         } else {

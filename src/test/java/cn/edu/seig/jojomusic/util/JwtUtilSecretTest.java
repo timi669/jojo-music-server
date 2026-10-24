@@ -50,10 +50,36 @@ class JwtUtilSecretTest {
     }
 
     @Test
-    void historicalWeakSecretIsAlsoTreatedAsUnconfigured() {
-        // 历史硬编码值 "VIBE_MUSIC" 不应被当成"已配置的强密钥"
-        configureSecret("VIBE_MUSIC");
-        assertTrue(JwtUtil.isUsingFallbackSecret(), "历史弱值不应被视为已安全配置");
+    void shortSecretIsRejectedAndFallsBack() {
+        // 过短的密钥容易被穷举，一律视为未配置。
+        // 这里刻意不用某个具体的历史口令：判据是长度，而不是一份关键词清单，
+        // 因此任何短口令都该被拒，包括曾经写死在源码里的那一个。
+        configureSecret("SHORT_KEY");
+        assertTrue(JwtUtil.isUsingFallbackSecret(), "短密钥不应被视为已安全配置");
+    }
+
+    @Test
+    void repeatedCharacterSecretIsRejected() {
+        // 32 个相同字符虽然长度达标，但熵极低，同样应拒绝。
+        configureSecret("a".repeat(40));
+        assertTrue(JwtUtil.isUsingFallbackSecret(), "单一重复字符的密钥不应被视为已安全配置");
+    }
+
+    @Test
+    void secretOfExactlyMinimumLengthIsAccepted() {
+        // 32 字符是 RFC 7518 对 HS256 的最小要求，边界值应当通过。
+        String exactly32 = "0123456789abcdefghijklmnopqrstuv";   // 32 chars
+        assertEquals(32, exactly32.length());
+        configureSecret(exactly32);
+        assertFalse(JwtUtil.isUsingFallbackSecret(), "恰好达到长度下限的密钥应被接受");
+    }
+
+    @Test
+    void secretJustBelowMinimumLengthIsRejected() {
+        String only31 = "0123456789abcdefghijklmnopqrstu";      // 31 chars
+        assertEquals(31, only31.length());
+        configureSecret(only31);
+        assertTrue(JwtUtil.isUsingFallbackSecret(), "比长度下限少一个字符也应被拒绝");
     }
 
     @Test
@@ -91,11 +117,17 @@ class JwtUtilSecretTest {
 
     @Test
     void secretIsTrimmedSoAccidentalWhitespaceDoesNotBreakTokens() {
-        configureSecret("   padded-secret-dddddddddddddddd   ");
-        assertFalse(JwtUtil.isUsingFallbackSecret());
+        // 密钥需达到强度下限才会被采纳，因此这里用足够长的一组值，
+        // 让本测试只关注"两侧空白是否被裁掉"这一件事。
+        String padded = "   padded-secret-0123456789abcdefghijklmn   ";
+        String trimmed = "padded-secret-0123456789abcdefghijklmn";
+
+        configureSecret(padded);
+        assertFalse(JwtUtil.isUsingFallbackSecret(), "长度达标且字符合多样，应被采纳");
         String token = JwtUtil.generateToken(sampleClaims());
-        configureSecret("padded-secret-dddddddddddddddd");
-        // 两侧空白被裁掉后，与不带空白的同一密钥等价
+
+        // 去掉空白后再初始化一次，签发的 token 必须仍然有效
+        configureSecret(trimmed);
         assertEquals("ROLE_USER", JwtUtil.parseToken(token).get("role"));
     }
 }
