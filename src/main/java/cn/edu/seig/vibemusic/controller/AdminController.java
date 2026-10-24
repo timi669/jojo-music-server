@@ -16,6 +16,7 @@ import cn.edu.seig.vibemusic.service.*;
 import cn.edu.seig.vibemusic.service.impl.AudioUploadValidationService;
 import cn.edu.seig.vibemusic.service.impl.ArtistProfileEnrichmentService;
 import cn.edu.seig.vibemusic.service.impl.LyricImportService;
+import cn.edu.seig.vibemusic.service.impl.NetEaseLyricFetchService;
 import cn.edu.seig.vibemusic.util.BindingResultUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +57,8 @@ public class AdminController {
     private AudioUploadValidationService audioUploadValidationService;
     @Autowired
     private LyricImportService lyricImportService;
+    @Autowired
+    private NetEaseLyricFetchService netEaseLyricFetchService;
 
     /**
      * 注册管理员
@@ -406,6 +409,67 @@ public class AdminController {
             return Result.success(lyricImportService.searchSongs(keyword));
         } catch (IllegalArgumentException exception) {
             return Result.error(exception.getMessage());
+        }
+    }
+
+    /**
+     * 预览从网易云抓取歌词的结果（只查不写）。
+     *
+     * <p>库中约 1/4 歌曲没有歌词，手工收集 LRC 成本高。此接口按需抓取并返回
+     * 匹配情况，供管理员确认后再落库，避免自动写入错配内容。
+     *
+     * @param songIds 指定歌曲编号；为空则自动挑选尚无歌词的歌曲
+     * @param limit   自动挑选时的上限（默认 50，最大 500）
+     */
+    @PostMapping("/lyrics/fetchPreview")
+    public Result<List<NetEaseLyricFetchService.LyricFetchResult>> previewLyricFetch(
+            @RequestBody(required = false) LyricFetchRequest request) {
+        List<Long> songIds = request == null ? null : request.getSongIds();
+        Integer limit = request == null ? null : request.getLimit();
+        List<NetEaseLyricFetchService.LyricFetchResult> results =
+                netEaseLyricFetchService.preview(songIds, limit);
+        // 响应里去掉整份歌词正文，只保留统计信息；正文仅用于落库。
+        return Result.success(results.stream()
+                .map(NetEaseLyricFetchService.LyricFetchResult::withoutLyric)
+                .toList());
+    }
+
+    /**
+     * 抓取歌词并写入库中。
+     *
+     * <p>写库复用带乐观锁的更新语句，因此<b>已有歌词的歌曲不会被覆盖</b>：
+     * 自动挑选模式只会选中尚无歌词的歌曲；显式指定时若期间被他人补上，更新数为 0
+     * 会回滚刚上传的对象并跳过。
+     *
+     * @return 成功写入的歌曲数
+     */
+    @PostMapping("/lyrics/fetch")
+    public Result<Integer> fetchLyrics(@RequestBody(required = false) LyricFetchRequest request) {
+        List<Long> songIds = request == null ? null : request.getSongIds();
+        Integer limit = request == null ? null : request.getLimit();
+        int stored = netEaseLyricFetchService.fetchAndStore(songIds, limit);
+        return Result.success("已从网易云抓取并写入 " + stored + " 首歌曲的歌词。", stored);
+    }
+
+    /** 歌词抓取请求体：两个字段都可空，空则按默认策略自动挑选。 */
+    public static class LyricFetchRequest {
+        private List<Long> songIds;
+        private Integer limit;
+
+        public List<Long> getSongIds() {
+            return songIds;
+        }
+
+        public void setSongIds(List<Long> songIds) {
+            this.songIds = songIds;
+        }
+
+        public Integer getLimit() {
+            return limit;
+        }
+
+        public void setLimit(Integer limit) {
+            this.limit = limit;
         }
     }
 
