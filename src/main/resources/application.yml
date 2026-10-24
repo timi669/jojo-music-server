@@ -96,7 +96,7 @@ minio:
   endpoint: http://YOUR_MINIO_HOST:9000 # 修改你的 MinIO 端点
   accessKey: YOUR_MINIO_ACCESS_KEY # 修改你的 MinIO Access Key
   secretKey: YOUR_MINIO_SECRET_KEY # 修改你的 MinIO Secret Key
-  bucket: vibe-music-data # 确认 Bucket 名称与你创建的一致
+  bucket: jojo-music-data # 确认 Bucket 名称与你创建的一致
 
 # 可选：歌手资料外部请求使用的 HTTP 代理（例如 V2Ray 的本地 HTTP 监听端口）
 artist-metadata:

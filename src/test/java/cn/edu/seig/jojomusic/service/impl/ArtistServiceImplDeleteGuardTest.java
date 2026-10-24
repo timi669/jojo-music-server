@@ -69,7 +69,7 @@ class ArtistServiceImplDeleteGuardTest {
 
     @Test
     void deletesArtistWithNoSongsAndCleansRelationsAndAvatar() {
-        String avatar = "http://localhost:9000/vibe-music-personal/artists/x.jpg";
+        String avatar = "http://localhost:9000/jojo-music-personal/artists/x.jpg";
         when(artistMapper.selectById(2L)).thenReturn(new Artist().setArtistName("Far East Movement").setAvatar(avatar));
         when(songMapper.selectCount(any(QueryWrapper.class))).thenReturn(0L);
         when(artistMapper.deleteById(2L)).thenReturn(1);
