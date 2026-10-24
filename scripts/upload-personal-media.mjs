@@ -23,7 +23,7 @@ const configValue = (pattern, label) => {
 const endpoint = configValue(/^\s{2}endpoint:\s*["']?([^"'\r\n]+)["']?\s*$/m, 'minio.endpoint').replace(/\/$/, '')
 const accessKey = configValue(/^\s{2}accessKey:\s*["']?([^"'\r\n]+)["']?\s*$/m, 'minio.accessKey')
 const secretKey = configValue(/^\s{2}secretKey:\s*["']?([^"'\r\n]+)["']?\s*$/m, 'minio.secretKey')
-const bucket = mode === 'remove-empty-legacy-bucket' ? 'vibe-music-data' : 'vibe-music-personal'
+const bucket = mode === 'remove-empty-legacy-bucket' ? 'vibe-music-data' : 'jojo-music-personal'
 const endpointUrl = new URL(endpoint)
 const region = 'us-east-1'
 const emptyHash = createHash('sha256').update('').digest('hex')

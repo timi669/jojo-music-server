@@ -5,7 +5,7 @@
  Source Server Type    : MySQL
  Source Server Version : 80030
  Source Host           : localhost:3306
- Source Schema         : vibe_music
+ Source Schema         : jojo_music
 
  Target Server Type    : MySQL
  Target Server Version : 80030
@@ -2568,12 +2568,12 @@ INSERT INTO `tb_user` VALUES (113, 'user_715', 'df10ef8509dc176d733d59549e7dbfaf
 INSERT INTO `tb_user` VALUES (114, 'user_428', 'df10ef8509dc176d733d59549e7dbfaf', '14949448619', 'user595@example.com', NULL, NULL, '2025-01-26 14:54:51', '2025-01-26 14:54:51', 0);
 INSERT INTO `tb_user` VALUES (117, 'user_622', 'df10ef8509dc176d733d59549e7dbfaf', '18680531662', 'user531@example.com', NULL, NULL, '2025-01-26 14:55:14', '2025-01-26 14:55:14', 0);
 INSERT INTO `tb_user` VALUES (118, 'user_788', 'df10ef8509dc176d733d59549e7dbfaf', '13901126007', 'user347@example.com', NULL, NULL, '2025-01-26 14:55:14', '2025-01-26 14:55:14', 0);
-INSERT INTO `tb_user` VALUES (126, 'test_user_1', '0659c7992e268962384eb17fafe88364', '13711118888', 'vibe_music_service_1@163.com', 'http://localhost:9000/vibe-music-data/users/401fd47b-7cda-48d6-9cef-cc2eddd86582-avatar.png', 'test.', '2025-03-06 21:06:04', '2025-04-19 16:42:33', 0);
-INSERT INTO `tb_user` VALUES (127, 'test_user_2', '0659c7992e268962384eb17fafe88364', '13922228888', 'vibe_music_service_2@163.com', 'http://localhost:9000/vibe-music-data/users/a63196d6-e9c2-41a3-8e27-e112986267ce-avatar.png', 'test', '2025-03-06 21:30:32', '2025-03-19 17:33:53', 0);
-INSERT INTO `tb_user` VALUES (130, 'test_user_4', '814b66c5fa938c61324725b0495a5805', '13112345678', 'vibe_music_service_4@126.com', NULL, 'dawd', '2025-03-07 17:00:30', '2025-04-02 16:45:38', 1);
-INSERT INTO `tb_user` VALUES (133, 'test_user_5', '6141f591b7f67ae24b9acd983a279b15', '13212345678', 'vibe_music_service_5@126.com', NULL, 'dwa', '2025-03-07 17:15:43', '2025-04-02 16:45:20', 1);
-INSERT INTO `tb_user` VALUES (137, 'test_user_6', 'e47e2fe9abeb2edccea30669e04b2f16', '18312345678', 'vibe_music_service_6@126.com', NULL, 'dwa', '2025-03-07 18:01:57', '2025-04-02 16:45:40', 0);
-INSERT INTO `tb_user` VALUES (138, 'test_user_7', '645ad11874f161244a04ee62935334e0', '13212345698', 'vibe_music_service_7@qq.com', NULL, 'dawd', '2025-03-07 18:06:24', '2025-04-02 16:45:43', 1);
+INSERT INTO `tb_user` VALUES (126, 'test_user_1', '0659c7992e268962384eb17fafe88364', '13711118888', 'jojo_music_service_1@163.com', 'http://localhost:9000/vibe-music-data/users/401fd47b-7cda-48d6-9cef-cc2eddd86582-avatar.png', 'test.', '2025-03-06 21:06:04', '2025-04-19 16:42:33', 0);
+INSERT INTO `tb_user` VALUES (127, 'test_user_2', '0659c7992e268962384eb17fafe88364', '13922228888', 'jojo_music_service_2@163.com', 'http://localhost:9000/vibe-music-data/users/a63196d6-e9c2-41a3-8e27-e112986267ce-avatar.png', 'test', '2025-03-06 21:30:32', '2025-03-19 17:33:53', 0);
+INSERT INTO `tb_user` VALUES (130, 'test_user_4', '814b66c5fa938c61324725b0495a5805', '13112345678', 'jojo_music_service_4@126.com', NULL, 'dawd', '2025-03-07 17:00:30', '2025-04-02 16:45:38', 1);
+INSERT INTO `tb_user` VALUES (133, 'test_user_5', '6141f591b7f67ae24b9acd983a279b15', '13212345678', 'jojo_music_service_5@126.com', NULL, 'dwa', '2025-03-07 17:15:43', '2025-04-02 16:45:20', 1);
+INSERT INTO `tb_user` VALUES (137, 'test_user_6', 'e47e2fe9abeb2edccea30669e04b2f16', '18312345678', 'jojo_music_service_6@126.com', NULL, 'dwa', '2025-03-07 18:01:57', '2025-04-02 16:45:40', 0);
+INSERT INTO `tb_user` VALUES (138, 'test_user_7', '645ad11874f161244a04ee62935334e0', '13212345698', 'jojo_music_service_7@qq.com', NULL, 'dawd', '2025-03-07 18:06:24', '2025-04-02 16:45:43', 1);
 
 -- ----------------------------
 -- Table structure for tb_user_favorite

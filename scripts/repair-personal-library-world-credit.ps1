@@ -22,7 +22,7 @@ if (-not ($databaseUrl.Success -and $username.Success -and $password.Success)) {
 }
 
 $databaseName = $databaseUrl.Groups[3].Value
-if ($databaseName -ne 'vibe_music_personal' -or $databaseName -notmatch '^[A-Za-z0-9_]+$') {
+if ($databaseName -ne 'jojo_music_personal' -or $databaseName -notmatch '^[A-Za-z0-9_]+$') {
     throw "Refusing to update unexpected database '$databaseName'."
 }
 

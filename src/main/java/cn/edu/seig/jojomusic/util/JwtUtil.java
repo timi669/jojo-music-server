@@ -29,7 +29,17 @@ import java.util.Map;
 public class JwtUtil {
 
     /** 未显式配置时使用的本地开发默认密钥（会在启动时告警） */
-    private static final String DEV_FALLBACK_SECRET = "VIBE_MUSIC_DEV_ONLY";
+    private static final String DEV_FALLBACK_SECRET = "JOJO_MUSIC_DEV_ONLY";
+
+    /**
+     * 需要拒绝的历史弱密钥。
+     *
+     * <p>{@code "VIBE_MUSIC"} 是改名前的硬编码默认值，至今可能仍留在某些部署或本地
+     * 配置里；{@code DEV_FALLBACK_SECRET} 本身也不该被当成"已配置的强密钥"。
+     * 两者都要视为未配置，否则弱密钥会被误认为可用。
+     */
+    private static final java.util.Set<String> WEAK_SECRETS =
+            java.util.Set.of("VIBE_MUSIC", DEV_FALLBACK_SECRET);
 
     /** JWT 过期时间：6 小时 */
     private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 6;
@@ -51,13 +61,13 @@ public class JwtUtil {
     /**
      * 容器初始化后把配置值写入静态字段。
      *
-     * <p>若配置为空或仍是历史遗留的弱值 "VIBE_MUSIC"，
+     * <p>若配置为空，或仍是历史遗留的弱值（见 {@link #WEAK_SECRETS}），
      * 则保留开发兜底值并打印告警，提示必须在部署前设置真实密钥。
      */
     @PostConstruct
     void initSecret() {
         String candidate = configuredSecret == null ? "" : configuredSecret.trim();
-        if (candidate.isEmpty() || "VIBE_MUSIC".equals(candidate)) {
+        if (candidate.isEmpty() || WEAK_SECRETS.contains(candidate)) {
             secretKey = DEV_FALLBACK_SECRET;
             usingFallbackSecret = true;
             System.err.println("""

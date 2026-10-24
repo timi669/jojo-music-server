@@ -9,7 +9,7 @@
 - 用户已明确批准导入 3 份，并批准对 ID 622、704 覆盖歌词 URL、将 `Till I Collapse` 映射到 ID 928；The Hills (1) 保持原链接，其余 34 份继续待审核。
 - 用户查看了剩余 34 首并确认自己都没有这些歌曲；这解释了它们为何在 personal 曲库中无法匹配。它们不再是需要审核映射的曲目；保持未导入、无需新建歌曲记录。若以后把歌曲加入曲库，再按实际歌曲核对歌词。
 - 管理端导入 API 返回 HTTP 200、`code=0`、`data=3`。**不要重放这 3 项导入。**
-- 写后只读核账：personal 数据库共 430 条非空歌词 URL、424 个唯一 URL；MinIO `vibe-music-personal/lyrics/` 共 426 个对象。数据库引用对象缺失数为 0。
+- 写后只读核账：personal 数据库共 430 条非空歌词 URL、424 个唯一 URL；MinIO `jojo-music-personal/lyrics/` 共 426 个对象。数据库引用对象缺失数为 0。
 - 3 个新对象及目标：
   - `Bruno Mars - Talking To The Moon (Acoustic Piano Version).lrc` → ID 622 → `lyrics/a610af55-6bd0-4524-9ab6-67c8649c5d37-991a6f5f-8a02-40f0-a5ed-4750d2364815.lrc`
   - `Eminem,Rihanna - Love the Way You Lie (Clean).lrc` → ID 704 → `lyrics/a547fcf1-9654-4121-ba57-508424368850-244e59c0-f362-466e-b057-1760300c8c18.lrc`
@@ -23,7 +23,7 @@
 
 - 又导入并核实了 16 份歌词。它们都通过 LRC 文件名与 personal 曲库音频对象 basename 精确对应到唯一歌曲 ID；导入前 16 个目标的歌词字段均为空。
 - 管理端导入接口返回 HTTP 200、`code=0`、`data=16`；其中 11 项从重复标题候选中按精确音频 basename 选择，另 5 项通过人工搜索选中同样精确 basename 对应的 ID。
-- 导入后只读核账：personal 数据库共有 423 条歌词 URL；MinIO `vibe-music-personal/lyrics/` 有 423 个对象；423 个 URL 全部对应现存对象，缺失对象 0、孤立对象 0。
+- 导入后只读核账：personal 数据库共有 423 条歌词 URL；MinIO `jojo-music-personal/lyrics/` 有 423 个对象；423 个 URL 全部对应现存对象，缺失对象 0、孤立对象 0。
 - 本批 16 个文件与目标 ID：
 
 | LRC 文件 | 歌曲 ID |
@@ -108,10 +108,10 @@
 
 用户在管理端确认导入 **253 份精确匹配歌词** 后，浏览器等待 `/admin/lyrics/import` 响应超时。2026-10-17 下午已直接对 personal 数据库与 MinIO 执行只读核对：
 
-- personal 数据库 `vibe_music_personal` 共 578 首歌曲。
+- personal 数据库 `jojo_music_personal` 共 578 首歌曲。
 - 根据本地文件名及服务端同样的标准化匹配逻辑重算，精确匹配目标为 253 首。
 - 253 首目标歌曲均有歌词 URL，且全部指向 MinIO `lyrics/` 前缀。
-- MinIO bucket `vibe-music-personal` 中 `lyrics/` 对象总数为 253。
+- MinIO bucket `jojo-music-personal` 中 `lyrics/` 对象总数为 253。
 - 253 个数据库 URL 全部对应现存对象；未发现缺失对象。
 - `lyrics/` 下未发现未被数据库引用的孤立对象。
 - 全库目前共有 253 条非空歌词 URL，全部在 `lyrics/` 前缀。
@@ -194,11 +194,11 @@
 
 ## 环境与安全约束
 
-- 个人数据库：`vibe_music_personal`
-- 个人 MinIO bucket：`vibe-music-personal`
+- 个人数据库：`jojo_music_personal`
+- 个人 MinIO bucket：`jojo-music-personal`
 - 歌词对象必须在独立 `lyrics/` 前缀，绝不放到 `songs/`。
 - 仅更新歌曲 `tb_song.lyric` URL；保留已有音频、歌曲元数据及旧歌词对象。
-- 不触碰 legacy 数据库 `vibe_music`、其他本地音乐库或无关数据。
+- 不触碰 legacy 数据库 `jojo_music`、其他本地音乐库或无关数据。
 - 保留工作区现有所有未提交改动，不 reset、不 revert、不清理无关文件。
 - 不要在聊天、日志或新文档中复制 profile 密码、访问密钥等凭据。
 
