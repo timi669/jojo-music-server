@@ -107,7 +107,7 @@ public class WikidataDemographicsProvider {
     public WikidataDemographicsProvider(
             @Value("${artist-metadata.proxy-host:}") String proxyHost,
             @Value("${artist-metadata.proxy-port:0}") int proxyPort,
-            @Value("${artist-metadata.wikidata-throttle-millis:600}") long throttleMillis
+            @Value("${artist-metadata.wikidata-throttle-millis:1500}") long throttleMillis
     ) {
         this.baseThrottleMillis = Math.max(0, throttleMillis);
         this.throttleMillis = this.baseThrottleMillis;
@@ -198,22 +198,27 @@ public class WikidataDemographicsProvider {
 
     /** 按名字找唯一同名（或别名相同）的 Wikidata 实体。 */
     private String findEntity(String name) throws IOException, InterruptedException {
-        for (String lang : new String[]{"en", "zh"}) {
-            JsonNode root = getJson(API + "?action=wbsearchentities&format=json&limit=7&language=" + lang
-                    + "&uselang=" + lang + "&search=" + encode(name));
-            if (root == null) {
-                continue;
-            }
-            JsonNode search = root.path("search");
-            if (!search.isArray()) {
-                continue;
-            }
-            for (JsonNode item : search) {
-                if (nameMatches(item, name)) {
-                    String id = item.path("id").asText("");
-                    if (!id.isEmpty()) {
-                        return id;
-                    }
+        /*
+         * 只查一次。
+         *
+         * <p>原先按 en、zh 两种语言各查一次，每位歌手光搜索就发 2 个请求；加上取 claims 和取
+         * 国籍标签，一共 3-4 个请求。Wikidata 对匿名调用限流很严（实测一轮 9 次 HTTP 429），
+         * 请求越少越稳。用 {@code languagefallback} 让英文名优先、缺词条时回落到其它语言即可。
+         */
+        JsonNode root = getJson(API + "?action=wbsearchentities&format=json&limit=7&language=en"
+                + "&uselang=en&search=" + encode(name));
+        if (root == null) {
+            return null;
+        }
+        JsonNode search = root.path("search");
+        if (!search.isArray()) {
+            return null;
+        }
+        for (JsonNode item : search) {
+            if (nameMatches(item, name)) {
+                String id = item.path("id").asText("");
+                if (!id.isEmpty()) {
+                    return id;
                 }
             }
         }
