@@ -1,5 +1,5 @@
 param(
-    [string]$DataRoot = 'D:\BaiduNetdiskDownload\vibe-music-data',
+    [string]$DataRoot = 'D:\BaiduNetdiskDownload\jojo-music-data',
     [string]$OutputPath = (Join-Path $PSScriptRoot '..\target\personal-library-manifest.json')
 )
 

@@ -11,7 +11,8 @@
 - 用户认证与权限控制
 - 歌手、歌曲、歌单、轮播图管理
 - 歌词导入：管理员后台导入 LRC 歌词，自动匹配歌曲库记录并支持预览、确认导入
-- 歌手资料自动补全：基于 MusicBrainz + Wikipedia/Wikidata + Wikimedia Commons 自动补全歌手简介、性别、国籍、头像（仅补充空字段，不覆盖已有资料，支持 HTTP 代理）
+- 歌手资料自动补全：自动补全歌手简介、性别、国籍、头像（仅补充空字段，不覆盖已有资料）。数据源以**网易云音乐 + 百度百科**为主力，默认不依赖境外站点
+- 歌词自动抓取：按需从网易云抓取带时间轴的 LRC 并写入库，已有歌词不会被覆盖（走乐观锁）
 - 音频上传校验：校验音频文件完整性并提取 MP3 时长，防止上传损坏或异常音频
 - 多对多艺人关联：支持歌曲多艺人（feat/合作）解析与搜索命中
 - 评论、收藏、反馈处理
@@ -56,19 +57,56 @@
 4. 创建数据库（示例）
 
    ```sql
-   CREATE DATABASE jojo_music CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE DATABASE jojo_music_personal CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
    ```
 
-5. 修改 `src/main/resources/application.yml` 中的数据库、Redis 和 MinIO 配置；邮件配置通过环境变量提供：`MAIL_HOST`、`MAIL_PORT`（默认 `587`）、`MAIL_USERNAME` 和 `MAIL_PASSWORD`。`MAIL_PASSWORD` 应使用邮箱服务商提供的 SMTP 授权码，不要提交到版本库。
-6. 对已有数据库执行 `sql/migrations/002_add_artist_metadata_sources.sql`，为歌手简介扩容并保存图片/简介来源链接。
+5. 创建 MinIO bucket（默认名 `jojo-music-personal`，与 `application.yml` 中的 `minio.bucket` 保持一致），并把它的访问策略设为匿名只读，否则前端无法直接加载封面、头像与音频：
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Principal": {"AWS": ["*"]},
+       "Action": ["s3:GetObject"],
+       "Resource": ["arn:aws:s3:::jojo-music-personal/*"]
+     }]
+   }
+   ```
+
+   这里只开放 `GetObject`（匿名读）。写入与删除仍需要密钥，不要在公开 bucket 上授予 `PutObject` 或 `DeleteObject`。
+
+6. 修改 `src/main/resources/application.yml` 中的数据库、Redis 和 MinIO 配置；邮件配置通过环境变量提供：`MAIL_HOST`、`MAIL_PORT`（默认 `587`）、`MAIL_USERNAME` 和 `MAIL_PASSWORD`。`MAIL_PASSWORD` 应使用邮箱服务商提供的 SMTP 授权码，不要提交到版本库。
+7. 对已有数据库执行 `sql/migrations/` 下的脚本：`001_create_tb_song_artist.sql` 建立多艺人关联表，`002_add_artist_metadata_sources.sql` 为歌手简介扩容并保存图片/简介来源链接。脚本可重复执行。
 
 ## 歌手资料自动补全
 
-管理员可在后台“歌手管理”页点击“自动补全缺失资料”。任务会扫描歌曲记录所引用的 MinIO MP3/FLAC 文件中的艺人标签，按 Unicode 规范化后的姓名去重，只创建歌手表中尚不存在的艺人，再对歌手库执行资料补全。匹配采用 MusicBrainz 唯一精确姓名结果；同名歧义或没有可靠资料的条目会跳过并列出原因。已有头像会保留；成功匹配到的新简介、性别和国籍会更新数据库中的对应值。
+管理员可在后台“歌手管理”页点击“自动补全缺失资料”。任务先扫描歌曲记录所引用的 MinIO 音频文件中的艺人标签，按 Unicode 规范化后的姓名去重，只创建歌手表中尚不存在的艺人，再对歌手库执行资料补全。
 
-简介优先来自中文 Wikipedia 页面；性别和国籍来自对应 Wikidata 实体的结构化属性。头像仅在 Wikimedia Commons 提供了可验证许可信息时下载，并存入 MinIO。来源信息保留在数据库中。任务在服务端后台运行，管理页会显示扫描/补全进度和跳过/失败名单。
+补全按以下顺序取资料，**每个字段各自取第一个非空值**：
 
-如果后端运行环境不能直连这些站点，可让后端进程使用本机 V2Ray 的 **HTTP 代理端口**。设置环境变量 `ARTIST_METADATA_PROXY_HOST` 和 `ARTIST_METADATA_PROXY_PORT` 后再启动后端，例如 Windows PowerShell：
+1. **网易云音乐**（主力）：头像、简介
+2. **百度百科**：简介、国籍（词条资料卡的「国籍」字段）、性别（简介中的「男/女 + 职业」表述）
+3. **维基百科 / Wikidata**（可选，默认关闭）：见下方开关
+
+安全性方面，只补充空字段，绝不覆盖已有资料；同名歌手按作品数裁决，且要求显著领先才采用，无法判定时留空而不猜测。
+
+选择来源时做过的取舍：
+
+- 库里的合作艺人条目（如 `王力宏&谭维维`）取**首位艺人**的资料
+- 百度百科只认「国籍」，不取「民族」（民族是族群归属而非国家）
+- 多国籍取第一个；资料卡里的脚注数字会被清除（否则会写出 `中国179` 这类脏值）
+- 网易云条目名含译名时（如 `BTS (防弹少年团)`）按去括号后相等来匹配，避免选到同名空壳账号
+
+若希望用维基数据补充性别/国籍，可开启：
+
+```powershell
+$env:ARTIST_METADATA_WIKIDATA_ENABLED = "true"
+```
+
+Wikidata 读的是 P27（国籍）/ P21（性别）结构属性，比解析文本可靠，并带职业门禁以挡掉同名无关条目。但它对匿名调用限流较严且需境外网络，故默认关闭。
+
+若后端运行环境需要代理访问境外站点，可设置本机 V2Ray 的 **HTTP 代理端口**：
 
 ```powershell
 $env:ARTIST_METADATA_PROXY_HOST = "127.0.0.1"
@@ -76,7 +114,18 @@ $env:ARTIST_METADATA_PROXY_PORT = "10809"
 .\mvnw.cmd spring-boot:run
 ```
 
-请在 V2Ray 客户端设置中确认实际的 HTTP 监听端口（`10809` 只是常见默认值；不要填 SOCKS 端口）。若后端由 IDE、Windows 服务或其他启动器运行，需在那个后端进程的环境变量中设置这两个值，并重启后端使配置生效。不设置代理变量时仍使用原有直连方式。
+请在 V2Ray 客户端设置中确认实际的 HTTP 监听端口（`10809` 只是常见默认值；不要填 SOCKS 端口）。不设置代理变量时仍使用直连方式。
+
+## 歌词自动抓取
+
+约四分之一的歌曲原本没有歌词。管理端可调用两个接口：
+
+- `POST /admin/lyrics/fetchPreview`：只查不写，返回每首歌的匹配情况供人工核对
+- `POST /admin/lyrics/fetch`：抓取并写入库
+
+两者都可留空参数，此时自动挑选尚无歌词的歌曲。写库复用带乐观锁的更新语句，**已有歌词不会被覆盖**；只接受带时间轴的 LRC（纯文本无法用于同步滚动）。
+
+匹配时先解析艺人对应的网易云 ID，再用 ID 约束歌曲匹配，因此能正确处理库名与数据源用名不一致的情况（如库里的 `BOL4` 对应网易云的 `脸红的思春期`）。
 
 ## 构建与运行
 
