@@ -61,9 +61,17 @@ public class CompositeArtistMetadataProvider implements ArtistMetadataProvider {
         String area = null;
 
         for (Source source : orderedSources()) {
-            // 头像与简介都拿到了就不再问后续来源。性别/国籍只有维基提供，而维基默认关闭，
-            // 若把它们也作为继续条件，会导致每位歌手都多问一次百度百科（实测约 600ms/次）。
-            if (!imageUrl.isEmpty() && !introduction.isEmpty()) {
+            /*
+             * 只要还有字段是空的，就继续问下一个来源。
+             *
+             * ⚠️ 这里曾经写成"头像与简介都有就提前结束"，理由是"百度百科不提供性别/国籍"。
+             * 后来百度百科的国籍（资料卡「国籍」）与性别（"男/女+职业"）接上了，那个前提
+             * 就不成立了：条件仍是"头像+简介都有即 break"，于是网易云一旦给齐这两项，
+             * 百度百科根本不会被查询，性别与国籍永远补不上——实测跑完 181/272 位，
+             * 性别仅 +2、国籍仅 +3，而抽样测量本应有 33%/60%。
+             * 现在按"是否仍有空缺"判断，让确有资料的来源都能被问到。
+             */
+            if (!imageUrl.isEmpty() && !introduction.isEmpty() && gender != null && area != null) {
                 break;
             }
             ArtistMetadata meta = attempt(source.provider(), artistName, source.label());

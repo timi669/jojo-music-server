@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -109,5 +110,67 @@ class BaiduBaikeArtistMetadataProviderTest {
         assertFalse(BaiduBaikeArtistMetadataProvider.isTrustedImageHost("evil.example.com"));
         assertFalse(BaiduBaikeArtistMetadataProvider.isTrustedImageHost("bcebos.com.evil.com"));
         assertFalse(BaiduBaikeArtistMetadataProvider.isTrustedImageHost(null));
+    }
+
+    // ---------- 性别判定（取值约定：0=男、1=女、2=组合） ----------
+
+    @Test
+    void detectsIndividualGenderFromProfessionPhrase() {
+        // 实测原样返回的 desc/abstract 片段。
+        assertEquals(Integer.valueOf(1),
+                BaiduBaikeArtistMetadataProvider.detectGender("中国内地女歌手、音乐人、演员，一级演员"));
+        assertEquals(Integer.valueOf(0),
+                BaiduBaikeArtistMetadataProvider.detectGender("中国内地男演员"));
+        assertEquals(Integer.valueOf(0),
+                BaiduBaikeArtistMetadataProvider.detectGender("澳大利亚男歌手"));
+        assertEquals(Integer.valueOf(1),
+                BaiduBaikeArtistMetadataProvider.detectGender("美国R&B女歌手、词曲作者，1995年出生"));
+    }
+
+    @Test
+    void individualBeatsGroupWhenBothAppear() {
+        // 实测：薛黛霏 的简介同时含"女歌手"（本人）与"组合"（所属团体），
+        // 应以"本人是女歌手"为准，而不是判成组合。
+        assertEquals(Integer.valueOf(1), BaiduBaikeArtistMetadataProvider.detectGender(
+                "薛明媛，中国内地女歌手、演员，女子演唱组合超级女团成员"));
+    }
+
+    @Test
+    void detectsGroupWhenNoIndividualPhraseExists() {
+        assertEquals(Integer.valueOf(2),
+                BaiduBaikeArtistMetadataProvider.detectGender("中国内地男子演唱组合"));
+        assertEquals(Integer.valueOf(2),
+                BaiduBaikeArtistMetadataProvider.detectGender("英国摇滚乐队，成立于1970年"));
+    }
+
+    @Test
+    void returnsNullInsteadOfGuessing() {
+        // 只出现"男""女"二字但不成对出现职业词时不能猜。
+        assertNull(BaiduBaikeArtistMetadataProvider.detectGender("男女对唱作品"));
+        assertNull(BaiduBaikeArtistMetadataProvider.detectGender("女声和音"));
+        assertNull(BaiduBaikeArtistMetadataProvider.detectGender(""));
+        assertNull(BaiduBaikeArtistMetadataProvider.detectGender(null));
+    }
+
+    // ---------- 资料卡值清洗（HTML 与脚注） ----------
+
+    @Test
+    void stripsFootnoteSuperscriptAndRefAnchor() {
+        // 实测原样返回：<a ...>中国</a><sup>179</sup><a name="ref_179"></a>
+        // 只删标签会把 "179" 留下，曾写出 "中国179" 这种脏值。
+        assertEquals("中国", BaiduBaikeArtistMetadataProvider.cleanCardValue(
+                "<a target=_blank href=\"/item/%E4%B8%AD%E5%9B%BD/22516505\" data-lemmaid=\"22516505\">中国</a>"
+                        + "<sup>179</sup><a name=\"ref_179\"></a>"));
+        assertEquals("美国", BaiduBaikeArtistMetadataProvider.cleanCardValue(
+                "<a target=_blank href=\"/item/%E7%BE%8E%E5%9B%BD/125486\" data-lemmaid=\"125486\">美国</a>"
+                        + "<sup>2</sup><a name=\"ref_2\"></a>"));
+    }
+
+    @Test
+    void keepsPlainValueUntouched() {
+        // 实测 Khalid 的词条里国籍就是纯文本，没有标签。
+        assertEquals("卡塔尔", BaiduBaikeArtistMetadataProvider.cleanCardValue("卡塔尔"));
+        assertEquals("", BaiduBaikeArtistMetadataProvider.cleanCardValue(null));
+        assertEquals("", BaiduBaikeArtistMetadataProvider.cleanCardValue(""));
     }
 }
