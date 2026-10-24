@@ -29,7 +29,7 @@ jobs:
         run: ./mvnw -B -o compile || ./mvnw -B compile
 
       # 只运行"离线安全"的测试类。
-      # VibeMusicServerApplicationTests 需要真实数据源装配，
+      # JojoMusicServerApplicationTests 需要真实数据源装配，
       # RedisConnectionTest 会写入/删除真实 Redis，二者均不纳入 CI。
       - name: Run safe test suite
         run: |

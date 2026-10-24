@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="cn.edu.seig.vibemusic.mapper.SongMapper">
+<mapper namespace="cn.edu.seig.jojomusic.mapper.SongMapper">
 
     <!-- 定义 ResultMap -->
-    <resultMap id="SongDetailVOResultMap" type="cn.edu.seig.vibemusic.model.vo.SongDetailVO">
+    <resultMap id="SongDetailVOResultMap" type="cn.edu.seig.jojomusic.model.vo.SongDetailVO">
         <id column="songId" property="songId"/>
         <result column="songName" property="songName"/>
         <result column="artistName" property="artistName"/>
@@ -13,7 +13,7 @@
         <result column="songCoverUrl" property="coverUrl"/>
         <result column="audioUrl" property="audioUrl"/>
         <result column="releaseTime" property="releaseTime"/>
-        <collection property="comments" ofType="cn.edu.seig.vibemusic.model.vo.CommentVO">
+        <collection property="comments" ofType="cn.edu.seig.jojomusic.model.vo.CommentVO">
             <id column="commentId" property="commentId"/>
             <result column="username" property="username"/>
             <result column="userAvatar" property="userAvatar"/>
@@ -50,7 +50,7 @@
     </select>
 
     <!-- 根据歌曲id列表查询歌曲列表 -->
-    <select id="getSongsByIds" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">
+    <select id="getSongsByIds" resultType="cn.edu.seig.jojomusic.model.vo.SongVO">
         SELECT
         s.id AS songId,
         s.name AS songName,
@@ -105,7 +105,7 @@
     </select>
 
     <!-- 根据用户收藏的歌曲id列表获取推荐歌曲 -->
-    <select id="getRecommendedSongsByStyles" resultType="cn.edu.seig.vibemusic.model.vo.SongVO">
+    <select id="getRecommendedSongsByStyles" resultType="cn.edu.seig.jojomusic.model.vo.SongVO">
         SELECT DISTINCT s.id AS songId, s.name AS songName, s.album,
         s.duration, s.cover_url AS coverUrl, s.audio_url AS audioUrl,
         s.release_time AS releaseTime, a.name AS artistName

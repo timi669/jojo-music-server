@@ -1,0 +1,40 @@
+package cn.edu.seig.jojomusic.service;
+
+import cn.edu.seig.jojomusic.model.dto.CommentPlaylistDTO;
+import cn.edu.seig.jojomusic.model.dto.CommentSongDTO;
+import cn.edu.seig.jojomusic.model.entity.Comment;
+import cn.edu.seig.jojomusic.result.Result;
+import com.baomidou.mybatisplus.extension.service.IService;
+
+/**
+ * <p>
+ * 服务类
+ * </p>
+ *
+ * @author timi669
+ * @since 2025-01-09
+ */
+public interface ICommentService extends IService<Comment> {
+
+    // 新增歌曲评论
+    Result addSongComment(CommentSongDTO commentSongDTO);
+
+    // 新增歌单评论
+    Result addPlaylistComment(CommentPlaylistDTO commentPlaylistDTO);
+
+    // 点赞评论
+    Result likeComment(Long commentId);
+
+    // 取消点赞评论
+    Result cancelLikeComment(Long commentId);
+
+    // 倒赞（点踩）评论
+    Result dislikeComment(Long commentId);
+
+    // 取消倒赞评论
+    Result cancelDislikeComment(Long commentId);
+
+    // 删除评论
+    Result deleteComment(Long commentId);
+
+}

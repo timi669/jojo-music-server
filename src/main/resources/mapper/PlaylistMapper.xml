@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="cn.edu.seig.vibemusic.mapper.PlaylistMapper">
+<mapper namespace="cn.edu.seig.jojomusic.mapper.PlaylistMapper">
 
     <!-- 定义 ResultMap -->
-    <resultMap id="PlaylistDetailVOResultMap" type="cn.edu.seig.vibemusic.model.vo.PlaylistDetailVO">
+    <resultMap id="PlaylistDetailVOResultMap" type="cn.edu.seig.jojomusic.model.vo.PlaylistDetailVO">
         <id column="playlistId" property="playlistId"/>
         <result column="title" property="title"/>
         <result column="coverUrl" property="coverUrl"/>
         <result column="introduction" property="introduction"/>
-        <collection property="songs" ofType="cn.edu.seig.vibemusic.model.vo.SongVO">
+        <collection property="songs" ofType="cn.edu.seig.jojomusic.model.vo.SongVO">
             <id column="songId" property="songId"/>
             <result column="songName" property="songName"/>
             <result column="artistName" property="artistName"/>
@@ -18,7 +18,7 @@
             <result column="audioUrl" property="audioUrl"/>
             <result column="releaseTime" property="releaseTime"/>
         </collection>
-        <collection property="comments" ofType="cn.edu.seig.vibemusic.model.vo.CommentVO">
+        <collection property="comments" ofType="cn.edu.seig.jojomusic.model.vo.CommentVO">
             <id column="commentId" property="commentId"/>
             <result column="username" property="username"/>
             <result column="userAvatar" property="userAvatar"/>
@@ -75,7 +75,7 @@
     </select>
 
     <!-- 根据风格推荐歌单（排除已收藏歌单） -->
-    <select id="getRecommendedPlaylistsByStyles" resultType="cn.edu.seig.vibemusic.model.vo.PlaylistVO">
+    <select id="getRecommendedPlaylistsByStyles" resultType="cn.edu.seig.jojomusic.model.vo.PlaylistVO">
         SELECT
         p.id AS playlistId,
         p.title AS title,
@@ -94,7 +94,7 @@
     </select>
 
     <!-- 根据歌单id列表查询歌单列表 -->
-    <select id="getPlaylistsByIds" resultType="cn.edu.seig.vibemusic.model.vo.PlaylistVO">
+    <select id="getPlaylistsByIds" resultType="cn.edu.seig.jojomusic.model.vo.PlaylistVO">
         SELECT
         p.id AS playlistId,
         p.title AS title,
