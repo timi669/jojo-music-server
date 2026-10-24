@@ -112,7 +112,7 @@ $env:ARTIST_METADATA_PROXY_PORT = "10809"
   删除歌手的数据保护、音频上传校验、歌词导入、歌手资料补全、艺人署名解析等
 - 运行：`mvn test`
 
-  > ⚠️ 其中 `VibeMusicServerApplicationTests`（需真实数据源装配）与
+  > ⚠️ 其中 `JojoMusicServerApplicationTests`（需真实数据源装配）与
   > `RedisConnectionTest`（**会写入/删除真实 Redis**）依赖本机环境，
   > 运行前请确认目标环境，避免误操作生产数据。
 
