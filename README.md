@@ -4,7 +4,7 @@
 
 **JOJO MUSIC Server** 是 JOJO MUSIC 的后端服务，负责提供音乐数据、用户认证、内容管理、文件存储、缓存与 API 逻辑支持。
 
-本项目基于 **Spring Boot 3 + Java 17 + Maven + MyBatis-Plus** 构建，并结合 **MySQL、Redis、MinIO、JWT** 等组件，为前端客户端和管理后台提供稳定的业务接口。
+本项目基于 **Spring Boot 3 + Java 25 + Maven + MyBatis-Plus** 构建，并结合 **MySQL、Redis、MinIO、JWT** 等组件，为前端客户端和管理后台提供稳定的业务接口。
 
 ## 主要功能
 
@@ -25,7 +25,7 @@
 ## 技术栈
 
 - Spring Boot 3
-- Java 17
+- Java 25 (LTS)
 - Maven
 - MySQL 8+
 - Redis
@@ -36,8 +36,8 @@
 
 ## 系统要求
 
-- JDK 17+
-- Maven 3.6+
+- JDK 25+
+- Maven 3.9+
 - MySQL 8.0+
 - Redis 6.0+
 - MinIO
