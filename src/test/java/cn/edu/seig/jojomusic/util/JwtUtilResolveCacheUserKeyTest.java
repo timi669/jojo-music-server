@@ -101,7 +101,7 @@ class JwtUtilResolveCacheUserKeyTest {
         String expired = com.auth0.jwt.JWT.create()
                 .withClaim("claims", Map.of("role", RoleEnum.USER.getRole(), "userId", 7))
                 .withExpiresAt(new Date(System.currentTimeMillis() - 1_000))
-                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("VIBE_MUSIC"));
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("an-expired-token-signed-with-any-key"));
         assertEquals("anon", JwtUtil.resolveCacheUserKey(requestWith(expired)));
     }
 

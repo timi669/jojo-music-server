@@ -77,7 +77,21 @@
    这里只开放 `GetObject`（匿名读）。写入与删除仍需要密钥，不要在公开 bucket 上授予 `PutObject` 或 `DeleteObject`。
 
 6. 修改 `src/main/resources/application.yml` 中的数据库、Redis 和 MinIO 配置；邮件配置通过环境变量提供：`MAIL_HOST`、`MAIL_PORT`（默认 `587`）、`MAIL_USERNAME` 和 `MAIL_PASSWORD`。`MAIL_PASSWORD` 应使用邮箱服务商提供的 SMTP 授权码，不要提交到版本库。
-7. 对已有数据库执行 `sql/migrations/` 下的脚本：`001_create_tb_song_artist.sql` 建立多艺人关联表，`002_add_artist_metadata_sources.sql` 为歌手简介扩容并保存图片/简介来源链接。脚本可重复执行。
+7. **必须设置 JWT 签名密钥**，否则后端会使用开发用默认密钥（启动日志会打印安全告警）：
+
+   ```bash
+   # 生成一个 48 字节的随机密钥
+   export APP_JWT_SECRET="$(openssl rand -base64 48)"
+   ```
+
+   Windows PowerShell：
+
+   ```powershell
+   $env:APP_JWT_SECRET = [Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Max 256 }))
+   ```
+
+   密钥至少 32 个字符（HMAC-SHA256 要求密钥不短于摘要长度，见 RFC 7518 §3.2），且不能是单一重复字符。**不要把它写进配置文件并提交**：任何拿到源码的人都能用它伪造管理员 token，从而绕过全部登录流程。
+8. 对已有数据库执行 `sql/migrations/` 下的脚本：`001_create_tb_song_artist.sql` 建立多艺人关联表，`002_add_artist_metadata_sources.sql` 为歌手简介扩容并保存图片/简介来源链接。脚本可重复执行。
 
 ## 歌手资料自动补全
 
