@@ -184,8 +184,8 @@ $env:ARTIST_METADATA_PROXY_PORT = "10809"
 
 ## 数据资源示例
 
-![数据资源](./img/jojo-music-data.png)
-![数据资源示例](./img/jojo-music-data-songs.png)
+![数据资源（jojo_music_personal 库）](./img/jojo-music-personal.png)
+![数据资源示例（歌曲表）](./img/jojo-music-personal-songs.png)
 
 ## 依赖服务说明
 
