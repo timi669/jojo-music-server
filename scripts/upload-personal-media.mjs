@@ -23,7 +23,7 @@ const configValue = (pattern, label) => {
 const endpoint = configValue(/^\s{2}endpoint:\s*["']?([^"'\r\n]+)["']?\s*$/m, 'minio.endpoint').replace(/\/$/, '')
 const accessKey = configValue(/^\s{2}accessKey:\s*["']?([^"'\r\n]+)["']?\s*$/m, 'minio.accessKey')
 const secretKey = configValue(/^\s{2}secretKey:\s*["']?([^"'\r\n]+)["']?\s*$/m, 'minio.secretKey')
-const bucket = mode === 'remove-empty-legacy-bucket' ? 'vibe-music-data' : 'jojo-music-personal'
+const bucket = 'jojo-music-personal'
 const endpointUrl = new URL(endpoint)
 const region = 'us-east-1'
 const emptyHash = createHash('sha256').update('').digest('hex')
@@ -176,26 +176,6 @@ if (mode === 'dry-run') {
   if (missing.length) throw new Error(`${missing.length} media files are missing from the source directory`)
   const bytes = items.reduce((total, item) => total + item.size, 0)
   console.log(JSON.stringify({ bucket, objects: items.length, bytes, mode }, null, 2))
-  process.exit(0)
-}
-
-if (mode === 'remove-empty-legacy-bucket') {
-  const parameters = new URLSearchParams({ 'list-type': '2', 'max-keys': '1' })
-  parameters.sort()
-  const query = parameters.toString().replace(/\+/g, '%20')
-  const listing = await request('GET', '', null, emptyHash, query)
-  const body = await listing.text()
-  const objectCount = [...body.matchAll(/<Contents>/g)].length
-  if (objectCount !== 0 || /<IsTruncated>true<\/IsTruncated>/.test(body)) {
-    throw new Error(`Refusing to delete non-empty bucket ${bucket}`)
-  }
-
-  const deleted = await request('DELETE', '', null, emptyHash)
-  await deleted.arrayBuffer()
-  const head = sign('HEAD', '', emptyHash)
-  const remaining = await fetch(head.url, { method: 'HEAD', headers: head.headers })
-  if (remaining.status !== 404) throw new Error(`Bucket ${bucket} still exists after deletion`)
-  console.log(JSON.stringify({ bucket, objectsBeforeDelete: 0, deleted: true, mode }, null, 2))
   process.exit(0)
 }
 
