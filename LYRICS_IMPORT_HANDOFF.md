@@ -213,9 +213,9 @@
 - 客户端 `parsedLyrics.ts` 当前未见独立单元测试；后续可补时间戳/偏移/BOM 编码/多时间戳与歌曲切换竞态的回归测试，并在不触碰曲库数据的前提下做一次端到端歌词显示验证。
 - 配置修复已把邮件设置移到 `spring.mail` 层级。
 - 当前核心实现：
-  - `jojo-music-server/src/main/java/cn/edu/seig/vibemusic/service/impl/LyricImportService.java`
-  - `jojo-music-server/src/main/java/cn/edu/seig/vibemusic/controller/AdminController.java`
-  - `jojo-music-server/src/main/java/cn/edu/seig/vibemusic/mapper/SongMapper.java`
+  - `jojo-music-server/src/main/java/cn/edu/seig/jojomusic/service/impl/LyricImportService.java`
+  - `jojo-music-server/src/main/java/cn/edu/seig/jojomusic/controller/AdminController.java`
+  - `jojo-music-server/src/main/java/cn/edu/seig/jojomusic/mapper/SongMapper.java`
   - `jojo-music-admin/src/views/song/form/lyric-import.vue`
   - `jojo-music-admin/src/api/system.ts`
   - `jojo-music-client/src/utils/parsedLyrics.ts`
