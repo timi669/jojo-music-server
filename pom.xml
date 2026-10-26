@@ -15,10 +15,17 @@
     <description>JOJO MUSIC Server</description>
     <url/>
     <licenses>
-        <license/>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
     </licenses>
     <developers>
-        <developer/>
+        <developer>
+            <id>timi669</id>
+            <name>timi669</name>
+        </developer>
     </developers>
     <scm>
         <connection/>
